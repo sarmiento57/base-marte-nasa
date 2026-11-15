@@ -5,7 +5,7 @@ export function buildMissionReport(state: GameState): MissionReport {
   const consequence = state.endReason === 'lifeSupport'
     ? state.lifeSupportReason
     : state.endReason === 'crewExposed'
-      ? `El índice educativo de exposición terminó en ${state.educationalRisk}; el límite para ganar es menor que 50.`
+      ? `El nivel de exposición terminó en ${state.educationalRisk}; el límite para ganar es menor que 50.`
       : state.endReason === 'noHarvest'
         ? 'La colonia no completó una cosecha antes de terminar los ocho soles.'
         : `La colonia recogió ${state.foodHarvested} de comida, mantuvo el soporte vital sin estado crítico y terminó con un índice de exposición de ${state.educationalRisk}.`

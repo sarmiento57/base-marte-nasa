@@ -1,6 +1,6 @@
 import type { BuildingType, GreenhouseMode, ResourceName, ScenarioId } from './types'
 
-export const BALANCE_NOTE = 'Valores simplificados del videojuego. No son datos de NASA.'
+export const BALANCE_NOTE = 'Parámetros de reserva y progresión de la colonia.'
 
 export const RESOURCE_CAPACITY: Partial<Record<ResourceName, number>> = {
   energy: 100,
@@ -41,12 +41,15 @@ export const GREENHOUSE_MODE: Record<GreenhouseMode, { energy: number; water: nu
 
 export const GAME_CONFIG = {
   maxSols: 8,
+  solDurationSeconds: 360,
+  fastForwardEnergyCost: 10,
   solarGeneration: 18,
   dustGeneration: 5,
   secondSolarBonus: 6,
   secondSolarDustBonus: 2,
   lifeSupport: { energy: 10, water: 2, food: 3 },
   sowCost: { energy: 25, water: 10, seeds: 1 },
+  cropBoost: { energy: 12, growth: 20 },
   cropInitialHealth: 100,
   cropOffHealthLoss: 25,
   cropHarvestGrowth: 100,
@@ -55,6 +58,7 @@ export const GAME_CONFIG = {
   cropFullYield: 35,
   cropReducedYield: 25,
   shelterCost: 6,
+  solarShelterWindowSeconds: 40,
   exposureOnSolarContinue: 60,
   energyRiskBelow: 20,
   waterRiskBelow: 10,

@@ -1,34 +1,39 @@
-# Informe de trabajo y verificación — Base Marte
+# Registro de validación de Base Marte
 
 Actualizado: 15 de noviembre de 2026  
-Rama: `chore/configuracion-inicial`  
-Repositorio: `C:\Users\Sarmiento\Desktop\NASA\base-marte-nasa`
+Rama: `feat/base-marte-juego-2d`
 
-## Trabajo reflejado en esta rama
+## Interfaz integrada
 
-- Juego 2D cenital de exploración en un mundo de 4,800 × 3,200 unidades, con cámara que sigue al astronauta.
-- Movimiento con WASD/flechas, pad direccional y clic/tap para caminar; el mapa incluye selección accesible de parcelas.
-- Las acciones de construcción, siembra y cosecha requieren proximidad al sitio correspondiente. Caminar no consume recursos ni avanza el sol.
-- NOVA ofrece ayuda configurable y minimizable. La interfaz se adapta a pantallas pequeñas.
-- Aplicación organizada bajo `src/app`, `src/components`, `src/data`, `src/engine`, `src/store` y `src/tests`. Zustand conserva una única store; el motor usa lógica independiente de React y del DOM.
-- Tailwind CSS v4, navegación/pantallas del juego, paneles de recursos, edificios, misiones, eventos y ciencia.
-- Escenarios deterministas: estándar (48 de energía; tormenta en sol 3 y alerta solar en sol 6), reservas extra (56; eventos en soles 4 y 7) y eventos tempranos (48; eventos en soles 2 y 5). Un único cierre crítico de soporte vital termina la misión.
-- Datos NASA con atribución y registro local identificado como histórico; no se presenta como información en vivo.
-- README, guía V3 y Documento Maestro sincronizados con las decisiones de movimiento, escenarios y cierre crítico.
+- La misión activa se muestra sin la cabecera, la navegación ni el pie de página del sitio. El mapa ocupa toda la ventana del escritorio y tiene control para activar pantalla completa del navegador.
+- Las reservas de energía, agua, comida, repuestos y semillas quedan visibles sobre el mapa. El soporte vital y el sol actual se muestran en la barra superior.
+- El dock del juego abre Construcción, Inventario, Misión, Alertas, Invernadero, Ciencia NASA, Bitácora y NOVA como paneles flotantes sobre el mapa.
+- El inventario presenta cantidades, estructuras, soporte vital, riesgo educativo, cultivo y posición del astronauta.
+- NOVA tiene una apariencia de hada robótica con alas luminosas y animación de vuelo dentro del mundo SVG; se mantiene junto al astronauta cuando camina.
+- Cada cierto tiempo NOVA presenta una sugerencia temporal con acciones disponibles (explorar, revisar módulos, parcelas o cultivo). El jugador puede ignorarla o abrir su panel; no cambia el estado de la partida.
+- Los avisos de acciones, los errores y las alertas aparecen dentro de la pantalla de juego.
+- La alerta solar aparece como aviso urgente encima del mapa y también del panel abierto, con contador de 40 segundos, efectos visuales y acceso al registro NASA histórico.
+- El aviso lleva al astronauta caminando hasta el hábitat. Entrar requiere proximidad, 6 de energía y deja a la tripulación dentro hasta cerrar el sol; la nave tiene una vista interior propia.
+- Si termina el plazo, el motor cierra la alerta una sola vez, registra el retraso, aumenta 60 el índice educativo y NOVA informa la consecuencia. No se presenta como dosis ni como alerta NASA en vivo.
+- El informe final queda dentro del entorno del juego; se puede cambiar a otros módulos o salir al campamento.
+- La interfaz de juego está enfocada en escritorio, según lo solicitado. No se preparó una adaptación móvil en este cambio.
+- Las acciones y recursos existentes siguen usando el store y las reglas del motor actuales; no se añadió estado duplicado ni nuevas dependencias.
 
-## Verificación de cierre
+## Comprobaciones del estado actual
 
 | Comprobación | Resultado |
 |---|---|
-| `npm run test` | Correcto: 4 archivos y 24 pruebas aprobadas. Node mostró una advertencia experimental de `localStorage`. |
-| `npm run build` | Correcto: TypeScript y Vite; 2,113 módulos transformados. |
+| `npm run test` | Correcto: 42 pruebas aprobadas en 5 archivos. Node mostró una advertencia experimental de `localStorage`. |
 | `npm run lint` | Correcto, sin errores. |
-| `git diff --check` | Correcto; solo avisos de normalización LF/CRLF de Git en Windows. |
-| Dependencias | No se agregaron dependencias. No se repitió `npm install`, según la indicación del usuario. |
-| Git | Trabajo en `chore/configuracion-inicial`; no se hizo push ni merge. |
+| `npm run build` | Correcto: TypeScript y Vite; 2,118 módulos transformados. |
+| `npm run dev` | No se inició una instancia nueva; el repositorio ya tenía el servidor de desarrollo activo. |
+| Servidor del juego | La página activa en `127.0.0.1:5173` respondió HTTP 200 después de los cambios. |
+| Guía Word | El DOCX se exportó a PDF y se revisaron sus tres páginas; título, listas y saltos quedan legibles. |
+| Navegador de escritorio | La última revisión visual se hizo antes de integrar el nuevo reloj, las cajas de suministros y la cabina SVG. Falta recorrer esas pantallas en el navegador y observar el avance automático sin esperar seis minutos, usando un reloj de prueba. |
+| `npm install` | No se ejecutó; las dependencias ya estaban instaladas y no se añadieron paquetes. |
+| `git diff --check` | Correcto; Git puede avisar que normalizará LF a CRLF en Windows. |
+| Publicación | Sin push ni merge. No se declara terminada ninguna historia BM por este cambio. |
 
-La revisión visual de escritorio y móvil quedó documentada durante el trabajo anterior. En este cierre se volvieron a ejecutar pruebas, compilación, lint y revisión de diferencias; no se repitió una sesión de navegador.
+## Consideraciones
 
-## Pendientes de entrega
-
-La publicación pública y el video de entrega siguen pendientes. Este informe no declara aprobadas ni terminadas en bloque las historias BM-01 a BM-28; cada aceptación debe confirmarse contra sus criterios y recorridos de juego.
+El plazo de 40 segundos y el refugio físico amplían la resolución de alerta por panel descrita en V3. El sol ahora termina cada seis minutos y se puede adelantar por 10 de energía, mientras V3 solo definía el cierre manual. Las cajas de suministros son una mecánica solicitada después de V3 y están identificadas como carga narrativa, no como registro de NASA. La observación DONKI citada corresponde al Sol el 3 de enero de 2025. No se consultan avisos solares en vivo. El botón de pantalla completa solicita la API nativa del navegador; si no está disponible, se muestra un aviso dentro del juego.

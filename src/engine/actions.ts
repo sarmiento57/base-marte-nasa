@@ -1,4 +1,5 @@
 import { marsPlots } from '../data/mars/plots'
+import { supplySites } from '../data/mars/supplies'
 import { MARS_WORLD } from '../data/mars/world'
 import { isWithinInteractionRange } from '../data/mars/movement'
 import { advanceSol } from './advanceSol'
@@ -140,6 +141,77 @@ function setMode(state: GameState, mode: 'normal' | 'saving' | 'off'): ActionRes
   }))
 }
 
+function accelerateCrop(state: GameState): ActionResult {
+  const inactive = requireActiveSol(state)
+  if (inactive) return reject(state, inactive)
+  if (!state.crop.active || state.crop.harvested || state.crop.growth >= GAME_CONFIG.cropHarvestGrowth) return reject(state, 'No hay un cultivo activo que acelerar.')
+  if (state.cropBoostedSol === state.sol) return reject(state, 'Ya usaste el impulso de cultivo durante este sol.')
+  const shortage = resourceCost(state, { energy: GAME_CONFIG.cropBoost.energy })
+  if (shortage) return reject(state, 'No hay energía suficiente para el impulso del invernadero.')
+  const growth = Math.min(GAME_CONFIG.cropHarvestGrowth, state.crop.growth + GAME_CONFIG.cropBoost.growth)
+  const next = {
+    ...state,
+    resources: { ...state.resources, energy: state.resources.energy - GAME_CONFIG.cropBoost.energy },
+    crop: { ...state.crop, growth },
+    cropBoostedSol: state.sol,
+  }
+  return accept(record(next, {
+    action: 'Impulsar el crecimiento del cultivo',
+    cost: `−${GAME_CONFIG.cropBoost.energy} energía`,
+    consequence: `La iluminación del invernadero adelantó ${growth - state.crop.growth} puntos de crecimiento.`,
+    resourceDeltas: { energy: -GAME_CONFIG.cropBoost.energy },
+    kind: 'action',
+  }))
+}
+
+function collectSupply(state: GameState, siteId: string): ActionResult {
+  const inactive = requireActiveSol(state)
+  if (inactive) return reject(state, inactive)
+  if (state.crewBusy) return reject(state, 'La tripulación ya realizó una tarea este sol.')
+  const site = supplySites.find((item) => item.id === siteId)
+  if (!site) return reject(state, 'No encontramos ese suministro en el mapa.')
+  const collected = state.collectedSupplyIds ?? []
+  if (collected.includes(site.id)) return reject(state, 'La tripulación ya recogió este suministro.')
+  if (!isWithinInteractionRange(state.mapPosition, site.position, MARS_WORLD.interactionRange)) return reject(state, 'Camina hasta el suministro para recogerlo.')
+  const capacity = RESOURCE_CAPACITY[site.resource]
+  const available = state.resources[site.resource]
+  const amount = Math.max(0, Math.min(site.amount, capacity === undefined ? site.amount : capacity - available))
+  if (amount === 0) return reject(state, 'No hay espacio para guardar más de este suministro.')
+
+  const next: GameState = {
+    ...state,
+    resources: { ...state.resources, [site.resource]: available + amount },
+    collectedSupplyIds: [...collected, site.id],
+    crewBusy: true,
+    crewTask: 'collect',
+  }
+  const label = { energy: 'energía', water: 'agua', food: 'comida', spareParts: 'repuestos', seeds: 'semillas' }[site.resource]
+  return accept(record(next, {
+    action: `Recoger ${site.name.toLowerCase()}`,
+    cost: '',
+    consequence: `La colonia recibió ${amount} ${label}.`,
+    resourceDeltas: { [site.resource]: amount },
+    kind: 'action',
+  }))
+}
+
+function advanceGame(state: GameState, fastForward: boolean): ActionResult {
+  if (state.gameOver || state.sol > state.maxSols) return reject(state, 'La misión ya terminó.')
+  if (hasUnresolvedEvent(state)) return reject(state, 'Resuelve la alerta antes de avanzar.')
+  if (fastForward && state.resources.energy < GAME_CONFIG.fastForwardEnergyCost) return reject(state, `Necesitas ${GAME_CONFIG.fastForwardEnergyCost} de energía para avanzar ahora. Espera a que termine el sol automático.`)
+
+  const prepared = fastForward
+    ? record({ ...state, resources: { ...state.resources, energy: state.resources.energy - GAME_CONFIG.fastForwardEnergyCost } }, {
+      action: 'Avanzar un sol antes de tiempo',
+      cost: `−${GAME_CONFIG.fastForwardEnergyCost} energía`,
+      consequence: 'El equipo aceleró el cierre del sol usando energía.',
+      resourceDeltas: { energy: -GAME_CONFIG.fastForwardEnergyCost },
+      kind: 'action',
+    })
+    : state
+  return accept(advanceSol(prepared))
+}
+
 function resolveDust(state: GameState, choice: 'saving' | 'normal'): ActionResult {
   const event = pendingEvent(state)
   if (state.gameOver) return reject(state, 'La misión ya terminó.')
@@ -155,15 +227,17 @@ function resolveDust(state: GameState, choice: 'saving' | 'normal'): ActionResul
   }))
 }
 
-function resolveSolar(state: GameState, choice: 'shelter' | 'continue'): ActionResult {
+function resolveSolar(state: GameState, choice: 'shelter' | 'continue', missedDeadline = false): ActionResult {
   const event = pendingEvent(state)
   if (state.gameOver) return reject(state, 'La misión ya terminó.')
   if (!event || event.kind !== 'solar') return reject(state, 'No hay una alerta solar pendiente.')
   if (choice === 'shelter' && state.resources.energy < GAME_CONFIG.shelterCost) return reject(state, 'No guardaste energía suficiente para el refugio.')
   if (choice === 'shelter' && state.crewBusy) return reject(state, 'La tripulación ya está ocupada este sol.')
+  const habitat = state.buildings.find((building) => building.type === 'habitat')
+  const habitatPlot = habitat ? marsPlots.find((plot) => plot.id === habitat.plotId) : undefined
+  if (choice === 'shelter' && (!habitatPlot || !isWithinInteractionRange(state.mapPosition, habitatPlot, MARS_WORLD.interactionRange))) return reject(state, 'Camina hasta la entrada de la nave hábitat para refugiarte.')
   const events = state.events.map((item) => item.id === event.id ? { ...item, resolved: true, optionId: choice } : item)
   const sheltered = choice === 'shelter'
-  const habitatPlot = state.buildings.find((building) => building.type === 'habitat')?.plotId ?? ''
   const next = {
     ...state,
     events,
@@ -172,26 +246,26 @@ function resolveSolar(state: GameState, choice: 'shelter' | 'continue'): ActionR
     crewBusy: sheltered || state.crewBusy,
     crewTask: sheltered ? 'shelter' as const : state.crewTask,
     shelterUsed: sheltered || state.shelterUsed,
-    mapPosition: sheltered ? workPosition(state, habitatPlot) : state.mapPosition,
   }
   return accept(record(next, {
-    action: sheltered ? 'Refugiar a la tripulación' : 'Continuar trabajando durante la alerta solar',
-    cost: sheltered ? '−6 energía' : 'Sin costo inmediato de energía; +60 al índice educativo de exposición',
-    consequence: sheltered ? 'La tripulación queda protegida este sol; el cultivo sigue funcionando si tiene recursos.' : 'El índice educativo de exposición aumentó 60 puntos; no es una dosis medida.',
+    action: sheltered ? 'Refugiar a la tripulación en la nave' : missedDeadline ? 'No llegar a tiempo al refugio solar' : 'Continuar trabajando durante la alerta solar',
+    cost: sheltered ? '−6 energía' : 'Sin costo inmediato de energía; +60 al nivel de exposición',
+    consequence: sheltered ? 'La tripulación entró a la nave y queda protegida este sol; el cultivo sigue funcionando si tiene recursos.' : missedDeadline ? 'La ventana del refugio terminó antes de que llegaras. El nivel de exposición subió 60 puntos.' : 'El nivel de exposición aumentó 60 puntos.',
     resourceDeltas: sheltered ? { energy: -6 } : {},
     kind: 'action',
   }))
 }
 
 export function dispatchGameCommand(state: GameState, command: GameCommand): ActionResult {
-  if (command.type === 'advance') {
-    const next = advanceSol(state)
-    return next === state ? reject(state, state.gameOver ? 'La misión ya terminó.' : hasUnresolvedEvent(state) ? 'Resuelve la alerta antes de avanzar.' : 'No quedan soles por avanzar.') : accept(next)
-  }
+  if (command.type === 'advance') return advanceGame(state, true)
+  if (command.type === 'advanceTimed') return advanceGame(state, false)
   if (command.type === 'build') return build(state, command)
   if (command.type === 'sow') return sow(state)
   if (command.type === 'harvest') return harvest(state)
   if (command.type === 'setMode') return setMode(state, command.mode)
+  if (command.type === 'accelerateCrop') return accelerateCrop(state)
   if (command.type === 'resolveDust') return resolveDust(state, command.choice)
+  if (command.type === 'missSolarDeadline') return resolveSolar(state, 'continue', true)
+  if (command.type === 'collectSupply') return collectSupply(state, command.siteId)
   return resolveSolar(state, command.choice)
 }

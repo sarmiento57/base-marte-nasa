@@ -3,7 +3,7 @@ export type GreenhouseMode = 'normal' | 'saving' | 'off'
 export type LifeSupportStatus = 'stable' | 'risk' | 'critical'
 export type BuildingType = 'habitat' | 'solar' | 'greenhouse'
 export type EventKind = 'dust' | 'solar'
-export type CrewTask = 'build' | 'sow' | 'harvest' | 'shelter'
+export type CrewTask = 'build' | 'sow' | 'harvest' | 'shelter' | 'collect'
 export type GameEndReason = 'win' | 'noHarvest' | 'crewExposed' | 'lifeSupport'
 export type ScenarioId = 'standard' | 'reserve-rich' | 'early-events'
 
@@ -68,6 +68,8 @@ export interface GameState {
   foodHarvested: number
   shelterUsed: boolean
   mapPosition: WorldPosition
+  cropBoostedSol?: number
+  collectedSupplyIds?: string[]
 }
 
 export interface BuildCommand { type: 'build'; building: 'solar' | 'greenhouse'; plotId: string }
@@ -76,8 +78,12 @@ export interface HarvestCommand { type: 'harvest' }
 export interface SetModeCommand { type: 'setMode'; mode: GreenhouseMode }
 export interface ResolveDustCommand { type: 'resolveDust'; choice: 'saving' | 'normal' }
 export interface ResolveSolarCommand { type: 'resolveSolar'; choice: 'shelter' | 'continue' }
+export interface MissSolarDeadlineCommand { type: 'missSolarDeadline' }
 export interface AdvanceCommand { type: 'advance' }
-export type GameCommand = BuildCommand | SowCommand | HarvestCommand | SetModeCommand | ResolveDustCommand | ResolveSolarCommand | AdvanceCommand
+export interface TimedAdvanceCommand { type: 'advanceTimed' }
+export interface CollectSupplyCommand { type: 'collectSupply'; siteId: string }
+export interface AccelerateCropCommand { type: 'accelerateCrop' }
+export type GameCommand = BuildCommand | SowCommand | HarvestCommand | SetModeCommand | ResolveDustCommand | ResolveSolarCommand | MissSolarDeadlineCommand | AdvanceCommand | TimedAdvanceCommand | CollectSupplyCommand | AccelerateCropCommand
 
 export interface ActionResult {
   ok: boolean
