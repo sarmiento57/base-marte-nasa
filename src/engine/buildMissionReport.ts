@@ -5,17 +5,17 @@ export function buildMissionReport(state: GameState): MissionReport {
   const consequence = state.endReason === 'lifeSupport'
     ? state.lifeSupportReason
     : state.endReason === 'crewExposed'
-      ? `El nivel de exposición terminó en ${state.educationalRisk}; el límite para ganar es menor que 50.`
+      ? `The exposure level ended at ${state.educationalRisk}; to win it must be below 50.`
       : state.endReason === 'noHarvest'
-        ? 'La colonia no completó una cosecha antes de terminar los ocho soles.'
-        : `La colonia recogió ${state.foodHarvested} de comida, mantuvo el soporte vital sin estado crítico y terminó con un índice de exposición de ${state.educationalRisk}.`
+        ? 'The colony did not finish a harvest before the eight sols ended.'
+        : `The colony harvested ${state.foodHarvested} food, kept life support out of critical state and ended with an exposure index of ${state.educationalRisk}.`
   const advice = state.endReason === 'lifeSupport'
-    ? 'Reserva energía, agua y comida para el soporte vital antes de usar recursos en el invernadero.'
+    ? 'Save energy, water and food for life support before spending resources on the greenhouse.'
     : state.endReason === 'crewExposed'
-      ? 'Guarda al menos 6 de energía para refugiar a la tripulación cuando llegue la alerta solar.'
+      ? 'Keep at least 6 energy to shelter the crew when the solar alert arrives.'
       : state.endReason === 'noHarvest'
-        ? 'Construye el invernadero temprano, siembra y cambia el modo según las reservas.'
-        : 'Compara el gasto del cultivo con la energía solar antes de cada avance.'
+        ? 'Build the greenhouse early, plant, and change the mode based on your reserves.'
+        : 'Compare what the crop uses with your solar energy before each advance.'
   return {
     result: state.won ? 'win' : 'loss',
     solsCompleted: state.solsCompleted,

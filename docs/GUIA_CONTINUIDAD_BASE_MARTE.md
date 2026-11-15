@@ -104,3 +104,10 @@ No hace falta reinstalar dependencias si `node_modules` ya está preparado. En W
 - Escribe pruebas para las reglas nuevas; ejecuta pruebas, lint y build después de los cambios.
 - Actualiza esta guía y `QA.md` cuando cambien las reglas o las verificaciones.
 - No hagas push, merge, publicación ni marques historias BM como completas sin instrucción explícita.
+
+## Actualización 15 de noviembre de 2026 — rama `feat/english-translation`
+
+- El juego y el README están en inglés para los jueces. Al agregar textos nuevos, escríbelos en inglés y sin apóstrofos dentro de cadenas con comillas simples.
+- El mapa (`MarsMap.tsx`) se divide en `MarsMap` (lee el store) y `MarsMapScene`. Los manejadores que reciben los componentes memorizados son estables (`handlersRef`); si agregas otro, sigue ese patrón para no romper la memorización.
+- La posición del astronauta mientras camina vive en `livePosition`; el store la recibe cada 200 ms (`POSITION_PUBLISH_MS`) y al detenerse. Antes de despachar una acción que dependa de la distancia desde el mapa, llama a `stopWalking()` para publicar la posición exacta.
+- La nave misteriosa es narrativa del juego, no un dato de NASA. Su calendario y trayectoria están en `src/data/mars/livingWorld.ts` y se animan con la Web Animations API (no usar `animateTransform`, que cuenta desde la carga de la página).

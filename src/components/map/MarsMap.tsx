@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Mountain, RadioTower } from 'lucide-react'
 import { BatteryCharging, Boxes, Droplets, PackageOpen, Sprout } from 'lucide-react'
 import { marsPlots } from '../../data/mars/plots'
 import { supplySites, type SupplySite } from '../../data/mars/supplies'
 import { isWithinInteractionRange, moveToward } from '../../data/mars/movement'
-import { createAlienFlybySchedule, createAlienFlightPath, getVisitorDialogue, visitingAstronauts } from '../../data/mars/livingWorld'
+import { ALIEN_FLIGHT_MS, createAlienFlybySchedule, createAlienFlightPath, getVisitorDialogue, visitingAstronauts } from '../../data/mars/livingWorld'
 import { surfaceStones } from '../../data/mars/surface'
 import { MARS_WORLD } from '../../data/mars/world'
 import { pendingEvent } from '../../engine/events'
-import type { ScenarioId, WorldPosition } from '../../engine/types'
+import type { GameState, ScenarioId, WorldPosition } from '../../engine/types'
 import { useGameStore } from '../../store/useGameStore'
 import { SolarShelterAlert } from '../events/SolarShelterAlert'
 
@@ -20,12 +20,37 @@ const directions = {
 } as const
 type MovementDirection = 'up' | 'down' | 'left' | 'right'
 
-export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnterHabitat }: { immersive?: boolean; solarSecondsRemaining?: number | null; onEnterHabitat?: () => void } = {}) {
+type MarsMapProps = { immersive?: boolean; solarSecondsRemaining?: number | null; onEnterHabitat?: () => void }
+type MapHandlers = {
+  select: (plotId: string) => void
+  collect: (site: SupplySite) => void
+  talk: (visitorId: string) => void
+  move: (direction: MovementDirection) => void
+  hold: (direction: MovementDirection, held: boolean) => void
+}
+
+// The astronaut is drawn from local state every animation frame; the shared store
+// only receives the position a few times per second (and always when walking stops),
+// so the HUD and panels do not re-render on every step.
+const POSITION_PUBLISH_MS = 200
+
+export const MarsMap = memo(function MarsMap(props: MarsMapProps) {
+  const game = useGameStore((state) => state.game)
+  return game ? <MarsMapScene {...props} game={game}/> : null
+})
+
+function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnterHabitat, game }: MarsMapProps & { game: GameState }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const walkRef = useRef<{ frame: number; destination: WorldPosition | null; direction: MovementDirection | null; position: WorldPosition | null; lastTime: number; lastPublishedAt: number; conversationId: string | null }>({ frame: 0, destination: null, direction: null, position: null, lastTime: 0, lastPublishedAt: 0, conversationId: null })
   const [walking, setWalking] = useState(false)
   const [facing, setFacing] = useState(0)
-  const game = useGameStore((state) => state.game)
+  const [livePosition, setLivePosition] = useState<WorldPosition | null>(null)
+  const handlersRef = useRef<MapHandlers | null>(null)
+  const onSelectPlot = useCallback((plotId: string) => handlersRef.current?.select(plotId), [])
+  const onCollectSupply = useCallback((site: SupplySite) => handlersRef.current?.collect(site), [])
+  const onTalkToVisitor = useCallback((visitorId: string) => handlersRef.current?.talk(visitorId), [])
+  const onMoveStep = useCallback((direction: MovementDirection) => handlersRef.current?.move(direction), [])
+  const onHoldDirection = useCallback((direction: MovementDirection, held: boolean) => handlersRef.current?.hold(direction, held), [])
   const selectedPlotId = useGameStore((state) => state.selectedPlotId)
   const selectPlot = useGameStore((state) => state.selectPlot)
   const setAstronautPosition = useGameStore((state) => state.setAstronautPosition)
@@ -35,7 +60,7 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
   useEffect(() => () => {
     cancelAnimationFrame(walkRef.current.frame)
   }, [])
-  const mapPosition = game?.mapPosition
+  const mapPosition = livePosition ?? game.mapPosition
   const camera = useMemo(() => {
     if (!mapPosition) return { x: 0, y: 0 }
     return {
@@ -58,11 +83,10 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
   const atHabitat = Boolean(mapPosition && habitatPlot && isWithinInteractionRange(mapPosition, habitatPlot, MARS_WORLD.interactionRange))
   const canEnterHabitat = Boolean(game && !constructionInProgress && (!solarEvent || (game.resources.energy >= 6 && !game.crewBusy)))
 
-  if (!game || !mapPosition) return null
-
   const stopWalking = () => {
     cancelAnimationFrame(walkRef.current.frame)
     if (walkRef.current.position) setAstronautPosition(walkRef.current.position.x, walkRef.current.position.y)
+    setLivePosition(null)
     walkRef.current.destination = null
     walkRef.current.direction = null
     walkRef.current.position = null
@@ -99,7 +123,8 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
     }
     walkRef.current.position = next
     const reached = Boolean(target && next.x === target.x && next.y === target.y)
-    if (time - walkRef.current.lastPublishedAt >= 50 || reached) {
+    setLivePosition(next)
+    if (time - walkRef.current.lastPublishedAt >= POSITION_PUBLISH_MS || reached) {
       setAstronautPosition(next.x, next.y)
       walkRef.current.lastPublishedAt = time
     }
@@ -110,6 +135,7 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
       walkRef.current.lastTime = 0
       walkRef.current.lastPublishedAt = 0
       walkRef.current.conversationId = null
+      setLivePosition(null)
       setWalking(false)
       if (visitorId) setNovaLine(getVisitorDialogue(visitorId, currentGame.sol))
       return
@@ -122,7 +148,7 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
     cancelAnimationFrame(walkRef.current.frame)
     walkRef.current.destination = destination
     walkRef.current.direction = null
-    walkRef.current.position = useGameStore.getState().game?.mapPosition ?? mapPosition
+    walkRef.current.position = walkRef.current.position ?? useGameStore.getState().game?.mapPosition ?? mapPosition
     walkRef.current.lastTime = 0
     walkRef.current.lastPublishedAt = 0
     walkRef.current.conversationId = conversationId
@@ -135,7 +161,7 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
     cancelAnimationFrame(walkRef.current.frame)
     walkRef.current.destination = null
     walkRef.current.direction = direction
-    walkRef.current.position = useGameStore.getState().game?.mapPosition ?? mapPosition
+    walkRef.current.position = walkRef.current.position ?? useGameStore.getState().game?.mapPosition ?? mapPosition
     walkRef.current.lastTime = 0
     walkRef.current.lastPublishedAt = 0
     walkRef.current.conversationId = null
@@ -228,7 +254,7 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
     }
     if ((event.key === 'e' || event.key === 'E') && atHabitat && !constructionInProgress) {
       event.preventDefault()
-      onEnterHabitat?.()
+      enterHabitat()
       return
     }
     const direction = directions[event.key.toLowerCase() as keyof typeof directions]
@@ -243,12 +269,19 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
   }
 
   const select = (plotId: string) => selectPlot(selectedPlotId === plotId ? null : plotId)
+  const enterHabitat = () => {
+    stopWalking()
+    onEnterHabitat?.()
+  }
+  useLayoutEffect(() => {
+    handlersRef.current = { select, collect: collectSupply, talk: talkToVisitor, move: moveOneStep, hold: holdDirection }
+  })
   const worldTransform = `translate(${-camera.x} ${-camera.y}) scale(${MARS_WORLD.zoom})`
 
-  return <section aria-label="Mapa de la colonia marciana" className={immersive ? 'absolute inset-0 isolate overflow-hidden bg-[#532d38]' : 'relative isolate overflow-hidden rounded-[1.75rem] border-4 border-[#fff0d4] bg-[#532d38] shadow-[0_20px_60px_#321d2e66]'}>
+  return <section aria-label="Martian colony map" className={immersive ? 'absolute inset-0 isolate overflow-hidden bg-[#532d38]' : 'relative isolate overflow-hidden rounded-[1.75rem] border-4 border-[#fff0d4] bg-[#532d38] shadow-[0_20px_60px_#321d2e66]'}>
     <div className={immersive ? 'absolute inset-0 overflow-hidden' : 'relative h-[min(72vh,780px)] min-h-[430px] overflow-hidden sm:min-h-[540px]'}>
-      <div role="group" aria-label="Mundo marciano. Camina con WASD o las flechas; haz clic en un lugar para moverte." tabIndex={0} onPointerDown={setFromPointer} onKeyDown={moveWithKeyboard} onKeyUp={stopFromKeyUp} onBlur={stopWalking} className="absolute inset-0 touch-pan-y outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-[#ffe486]">
-        <svg ref={svgRef} viewBox={`0 0 ${MARS_WORLD.viewWidth} ${MARS_WORLD.viewHeight}`} preserveAspectRatio="xMidYMid slice" role="img" aria-label="Colonia marciana amplia con hábitat, panel solar, caminos, rocas y terreno explorable" className="absolute inset-0 size-full">
+      <div role="group" aria-label="Martian world. Walk with WASD or the arrow keys; click a spot to move there." tabIndex={0} onPointerDown={setFromPointer} onKeyDown={moveWithKeyboard} onKeyUp={stopFromKeyUp} onBlur={stopWalking} className="absolute inset-0 touch-pan-y outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-[#ffe486]">
+        <svg ref={svgRef} viewBox={`0 0 ${MARS_WORLD.viewWidth} ${MARS_WORLD.viewHeight}`} preserveAspectRatio="xMidYMid slice" role="img" aria-label="Wide Martian colony with a habitat, solar panel, paths, rocks and terrain to explore" className="absolute inset-0 size-full">
           <defs>
             <linearGradient id="soil-base" x2=".9" y2="1"><stop stopColor="#be6547"/><stop offset=".42" stopColor="#a94e3e"/><stop offset="1" stopColor="#78394a"/></linearGradient>
             <linearGradient id="soil-highland" x2=".4" y2="1"><stop stopColor="#d27b55"/><stop offset="1" stopColor="#a54e43"/></linearGradient>
@@ -270,9 +303,9 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
               </g>
             })}
             <MapLandmarks />
-            {marsPlots.map((plot) => <PlotMarker key={plot.id} plot={plot} selected={plot.id === selectedPlotId} occupied={game.buildings.some((building) => building.plotId === plot.id)} onSelect={() => select(plot.id)} />)}
-            {supplySites.map((site) => <SupplyMarker key={site.id} site={site} collected={collectedSupplyIds.includes(site.id)} onSelect={() => collectSupply(site)} disabled={game.crewBusy || Boolean(currentEvent)} />)}
-            {visitingAstronauts.map((visitor) => <CrewVisitor key={visitor.id} visitor={visitor} disabled={movementLocked} onTalk={() => talkToVisitor(visitor.id)} />)}
+            {marsPlots.map((plot) => <PlotMarker key={plot.id} plot={plot} selected={plot.id === selectedPlotId} occupied={game.buildings.some((building) => building.plotId === plot.id)} onSelect={onSelectPlot} />)}
+            {supplySites.map((site) => <SupplyMarker key={site.id} site={site} collected={collectedSupplyIds.includes(site.id)} onSelect={onCollectSupply} disabled={game.crewBusy || Boolean(currentEvent)} />)}
+            {visitingAstronauts.map((visitor) => <CrewVisitor key={visitor.id} visitor={visitor} disabled={movementLocked} onTalk={onTalkToVisitor} />)}
             <AlienFlyby scenarioId={game.scenarioId} sol={game.sol} enabled={!game.gameOver} />
             <Astronaut x={mapPosition.x} y={mapPosition.y} moving={walking} task={game.crewTask} facing={facing} />
             <NovaCompanion x={Math.min(MARS_WORLD.width - 115, mapPosition.x + 190)} y={Math.max(100, mapPosition.y - 128)} onRepeat={repeatNovaLine} />
@@ -280,51 +313,53 @@ export function MarsMap({ immersive = false, solarSecondsRemaining = null, onEnt
           </g>
         </svg>
       </div>
-      {!immersive && <div data-map-ui="true" className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-2xl border-2 border-white/75 bg-[#322947]/95 px-3 py-2 text-white shadow-xl sm:left-5 sm:top-4 sm:px-4"><span aria-hidden="true" className="grid size-8 place-items-center rounded-xl bg-[#f89760] text-lg">🚀</span><span><strong className="block text-xs font-black sm:text-sm">Base Marte</strong><span className="text-[9px] text-[#f5d6ad] sm:text-[10px]">Sol {String(game.sol).padStart(2, '0')} · {game.lifeSupport === 'stable' ? 'Tripulación estable' : game.lifeSupport === 'risk' ? 'Revisa las reservas' : 'Alerta crítica'}</span></span></div>}
-      {!immersive && <div data-map-ui="true" className="absolute right-3 top-3 z-20 rounded-2xl border-2 border-white/70 bg-[#fff0d8]/95 px-3 py-2 text-[10px] font-bold text-[#3d3150] shadow-lg sm:right-5 sm:top-4 sm:text-xs"><span className="hidden sm:inline">SUPERFICIE · </span>SECTOR DEL VALLE</div>}
-      {selectedPlot && <button type="button" data-map-ui="true" disabled={movementLocked} aria-label={`Caminar hasta ${selectedPlot.label}`} onClick={() => walkTo({ x: selectedPlot.x, y: selectedPlot.y })} className="absolute left-3 top-[4.8rem] z-20 min-h-11 rounded-xl border-2 border-white bg-[#4d4267]/95 px-3 text-[10px] font-black text-white shadow-lg hover:bg-[#66527f] focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60 sm:left-5 sm:top-[5rem] sm:px-4 sm:text-xs">{constructionInProgress ? 'Obra en curso · movimiento bloqueado' : sheltering ? 'Refugio activo · cierra el sol para salir' : isWithinInteractionRange(mapPosition, selectedPlot, MARS_WORLD.interactionRange) ? `Estás en ${selectedPlot.id}` : `Caminar a ${selectedPlot.id}`}</button>}
-      {nearbyVisitor && !movementLocked && <button type="button" data-map-ui="true" onClick={() => talkToVisitor(nearbyVisitor.id)} className="absolute bottom-[82px] left-6 z-30 flex min-h-11 items-center gap-2 rounded-xl border-2 border-white bg-[#405b68]/95 px-4 text-xs font-black text-white shadow-lg hover:bg-[#4d7880] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white">💬 Hablar con {nearbyVisitor.name}<kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[9px]">E</kbd></button>}
-      {nearbySupply && !movementLocked && <button type="button" data-map-ui="true" disabled={game.crewBusy || Boolean(currentEvent)} onClick={() => collectSupply(nearbySupply)} className="absolute bottom-[136px] left-6 z-30 flex min-h-11 items-center gap-2 rounded-xl border-2 border-white bg-[#456d59]/95 px-4 text-xs font-black text-white shadow-lg hover:bg-[#56866c] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60">📦 Recoger {nearbySupply.name}<kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[9px]">E</kbd></button>}
+      {!immersive && <div data-map-ui="true" className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-2xl border-2 border-white/75 bg-[#322947]/95 px-3 py-2 text-white shadow-xl sm:left-5 sm:top-4 sm:px-4"><span aria-hidden="true" className="grid size-8 place-items-center rounded-xl bg-[#f89760] text-lg">🚀</span><span><strong className="block text-xs font-black sm:text-sm">Mars Base</strong><span className="text-[9px] text-[#f5d6ad] sm:text-[10px]">Sol {String(game.sol).padStart(2, '0')} · {game.lifeSupport === 'stable' ? 'Crew stable' : game.lifeSupport === 'risk' ? 'Check your reserves' : 'Critical alert'}</span></span></div>}
+      {!immersive && <div data-map-ui="true" className="absolute right-3 top-3 z-20 rounded-2xl border-2 border-white/70 bg-[#fff0d8]/95 px-3 py-2 text-[10px] font-bold text-[#3d3150] shadow-lg sm:right-5 sm:top-4 sm:text-xs"><span className="hidden sm:inline">SURFACE · </span>VALLEY SECTOR</div>}
+      {selectedPlot && <button type="button" data-map-ui="true" disabled={movementLocked} aria-label={`Walk to ${selectedPlot.label}`} onClick={() => walkTo({ x: selectedPlot.x, y: selectedPlot.y })} className="absolute left-3 top-[4.8rem] z-20 min-h-11 rounded-xl border-2 border-white bg-[#4d4267]/95 px-3 text-[10px] font-black text-white shadow-lg hover:bg-[#66527f] focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60 sm:left-5 sm:top-[5rem] sm:px-4 sm:text-xs">{constructionInProgress ? 'Build in progress · movement locked' : sheltering ? 'Shelter active · close the sol to leave' : isWithinInteractionRange(mapPosition, selectedPlot, MARS_WORLD.interactionRange) ? `You are at ${selectedPlot.id}` : `Walk to ${selectedPlot.id}`}</button>}
+      {nearbyVisitor && !movementLocked && <button type="button" data-map-ui="true" onClick={() => talkToVisitor(nearbyVisitor.id)} className="absolute bottom-[82px] left-6 z-30 flex min-h-11 items-center gap-2 rounded-xl border-2 border-white bg-[#405b68]/95 px-4 text-xs font-black text-white shadow-lg hover:bg-[#4d7880] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white">💬 Talk to {nearbyVisitor.name}<kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[9px]">E</kbd></button>}
+      {nearbySupply && !movementLocked && <button type="button" data-map-ui="true" disabled={game.crewBusy || Boolean(currentEvent)} onClick={() => collectSupply(nearbySupply)} className="absolute bottom-[136px] left-6 z-30 flex min-h-11 items-center gap-2 rounded-xl border-2 border-white bg-[#456d59]/95 px-4 text-xs font-black text-white shadow-lg hover:bg-[#56866c] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60">📦 Collect {nearbySupply.name}<kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[9px]">E</kbd></button>}
       <WorldRadar x={mapPosition.x} y={mapPosition.y} />
-      {!immersive && <div data-map-ui="true" className="absolute bottom-3 left-3 z-20 rounded-2xl border border-white/60 bg-[#322947]/90 px-3 py-2 text-[10px] font-semibold text-white shadow-lg sm:bottom-4 sm:left-5">{selectedPlot ? `${selectedPlot.label} · ${selectedPlot.description}` : 'Explora el terreno marciano'}</div>}
-      {!immersive && <div data-map-ui="true" className="absolute bottom-3 right-3 z-20 hidden rounded-xl border border-white/50 bg-[#322947]/90 px-3 py-2 text-[10px] font-bold text-white shadow-lg sm:block">WASD / flechas · clic para caminar</div>}
-      {immersive && <div data-map-ui="true" className="absolute bottom-6 left-6 z-20 rounded-xl border border-white/35 bg-[#322947]/75 px-4 py-2 text-[10px] font-bold text-white/90 shadow-lg backdrop-blur-sm">{constructionInProgress ? 'Construcción: no puedes caminar hasta cerrar este sol' : sheltering ? 'Refugio activo: permanece dentro hasta cerrar el sol' : nearbyVisitor ? 'WASD / flechas · clic para caminar · E para hablar' : nearbySupply ? 'WASD / flechas · clic para caminar · E para recoger' : 'WASD / flechas · clic en el terreno para caminar'}</div>}
-      <DirectionPad onMove={moveOneStep} onHold={holdDirection} immersive={immersive} disabled={movementLocked} />
+      {!immersive && <div data-map-ui="true" className="absolute bottom-3 left-3 z-20 rounded-2xl border border-white/60 bg-[#322947]/90 px-3 py-2 text-[10px] font-semibold text-white shadow-lg sm:bottom-4 sm:left-5">{selectedPlot ? `${selectedPlot.label} · ${selectedPlot.description}` : 'Explore the Martian terrain'}</div>}
+      {!immersive && <div data-map-ui="true" className="absolute bottom-3 right-3 z-20 hidden rounded-xl border border-white/50 bg-[#322947]/90 px-3 py-2 text-[10px] font-bold text-white shadow-lg sm:block">WASD / arrows · click to walk</div>}
+      {immersive && <div data-map-ui="true" className="absolute bottom-6 left-6 z-20 rounded-xl border border-white/35 bg-[#322947]/75 px-4 py-2 text-[10px] font-bold text-white/90 shadow-lg backdrop-blur-sm">{constructionInProgress ? 'Building: you cannot walk until this sol closes' : sheltering ? 'Shelter active: stay inside until the sol closes' : nearbyVisitor ? 'WASD / arrows · click to walk · E to talk' : nearbySupply ? 'WASD / arrows · click to walk · E to collect' : 'WASD / arrows · click the ground to walk'}</div>}
+      <DirectionPad onMove={onMoveStep} onHold={onHoldDirection} immersive={immersive} disabled={movementLocked} />
       {solarEvent && solarSecondsRemaining !== null && <>
         <div aria-hidden="true" className="solar-alert-vignette pointer-events-none absolute inset-0 z-10"/>
-        <SolarShelterAlert sol={solarEvent.sol} secondsRemaining={solarSecondsRemaining} atShip={atHabitat} canEnter={canEnterHabitat} onGoToShip={headToHabitat} onEnterShip={() => onEnterHabitat?.()}/>
+        <SolarShelterAlert sol={solarEvent.sol} secondsRemaining={solarSecondsRemaining} atShip={atHabitat} canEnter={canEnterHabitat} onGoToShip={headToHabitat} onEnterShip={enterHabitat}/>
       </>}
-      {atHabitat && !constructionInProgress && !solarEvent && <button type="button" data-map-ui="true" onClick={() => onEnterHabitat?.()} disabled={!canEnterHabitat} className="absolute bottom-[96px] left-6 z-30 flex min-h-12 items-center gap-2 rounded-xl border-2 border-white bg-[#426c66]/95 px-4 text-xs font-black text-white shadow-lg hover:bg-[#568c7b] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-55">🚪 Entrar a la nave <kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[9px]">E</kbd></button>}
-      {atHabitat && solarEvent && !canEnterHabitat && <p role="status" className="absolute bottom-[151px] left-6 z-30 max-w-72 rounded-xl border border-[#ffd491] bg-[#443547]/95 px-3 py-2 text-[10px] font-black text-[#ffe0a8]">Para cerrar el refugio necesitas 6 ⚡ y tener libre a la tripulación.</p>}
+      {atHabitat && !constructionInProgress && !solarEvent && <button type="button" data-map-ui="true" onClick={enterHabitat} disabled={!canEnterHabitat} className="absolute bottom-[96px] left-6 z-30 flex min-h-12 items-center gap-2 rounded-xl border-2 border-white bg-[#426c66]/95 px-4 text-xs font-black text-white shadow-lg hover:bg-[#568c7b] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-55">🚪 Enter the ship <kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[9px]">E</kbd></button>}
+      {atHabitat && solarEvent && !canEnterHabitat && <p role="status" className="absolute bottom-[151px] left-6 z-30 max-w-72 rounded-xl border border-[#ffd491] bg-[#443547]/95 px-3 py-2 text-[10px] font-black text-[#ffe0a8]">To seal the shelter you need 6 ⚡ and a free crew.</p>}
     </div>
-    {!immersive && <div className="flex flex-wrap items-center justify-between gap-2 bg-[#fff2dc] px-4 py-3 text-xs text-[#4e4053] sm:px-6"><p role="status" aria-live="polite" className="font-bold">{selectedPlot ? `${selectedPlot.label}: ${selectedPlot.kind === 'obstacle' ? 'bloqueada' : game.buildings.some((item) => item.plotId === selectedPlot.id) ? 'ocupada' : 'disponible'}` : 'Camina por el valle y acerca el zoom a cada sector.'}</p><span className="rounded-full bg-[#efd2b7] px-3 py-1 font-extrabold">Mundo explorable · mapa 2D</span></div>}
-    <AccessiblePlotList selectedPlotId={selectedPlotId} onSelect={select} immersive={immersive} />
+    {!immersive && <div className="flex flex-wrap items-center justify-between gap-2 bg-[#fff2dc] px-4 py-3 text-xs text-[#4e4053] sm:px-6"><p role="status" aria-live="polite" className="font-bold">{selectedPlot ? `${selectedPlot.label}: ${selectedPlot.kind === 'obstacle' ? 'blocked' : game.buildings.some((item) => item.plotId === selectedPlot.id) ? 'occupied' : 'available'}` : 'Walk around the valley and zoom in on each sector.'}</p><span className="rounded-full bg-[#efd2b7] px-3 py-1 font-extrabold">Explorable world · 2D map</span></div>}
+    <AccessiblePlotList selectedPlotId={selectedPlotId} onSelect={onSelectPlot} immersive={immersive} />
   </section>
 }
 
 const supplyIcons = { energy: BatteryCharging, water: Droplets, food: PackageOpen, spareParts: Boxes, seeds: Sprout } as const
-const supplyLabels = { energy: 'energía', water: 'agua', food: 'comida', spareParts: 'repuestos', seeds: 'semillas' } as const
+const supplyLabels = { energy: 'energy', water: 'water', food: 'food', spareParts: 'spare parts', seeds: 'seeds' } as const
 
-function SupplyMarker({ site, collected, onSelect, disabled }: { site: SupplySite; collected: boolean; onSelect: () => void; disabled: boolean }) {
+const SupplyMarker = memo(function SupplyMarker({ site, collected, onSelect, disabled }: { site: SupplySite; collected: boolean; onSelect: (site: SupplySite) => void; disabled: boolean }) {
   const Icon = supplyIcons[site.resource]
+  const pillText = collected ? 'Empty' : `${site.name} · +${site.amount} ${supplyLabels[site.resource]}`
+  const pillWidth = Math.max(174, pillText.length * 10 + 28)
   const handleKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
     if (disabled || collected || (event.key !== 'Enter' && event.key !== ' ')) return
     event.preventDefault()
-    onSelect()
+    onSelect(site)
   }
-  return <g transform={`translate(${site.position.x} ${site.position.y})`} role={collected ? 'img' : 'button'} tabIndex={collected ? undefined : 0} aria-disabled={!collected && disabled} aria-label={collected ? `${site.name}, recogido` : `${site.name}. ${site.description} ${disabled ? 'La tripulación está ocupada.' : 'Haz clic para acercarte y recogerlo.'}`} onClick={() => { if (!disabled && !collected) onSelect() }} onKeyDown={handleKeyDown} className={`supply-marker outline-none ${collected ? 'supply-collected' : disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:drop-shadow-[0_0_15px_#ffe58b] focus-visible:drop-shadow-[0_0_15px_#fff]'}`}>
+  return <g transform={`translate(${site.position.x} ${site.position.y})`} role={collected ? 'img' : 'button'} tabIndex={collected ? undefined : 0} aria-disabled={!collected && disabled} aria-label={collected ? `${site.name}, collected` : `${site.name}. ${site.description} ${disabled ? 'The crew is busy.' : 'Click to walk over and collect it.'}`} onClick={() => { if (!disabled && !collected) onSelect(site) }} onKeyDown={handleKeyDown} className={`supply-marker outline-none ${collected ? 'supply-collected' : disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:drop-shadow-[0_0_15px_#ffe58b] focus-visible:drop-shadow-[0_0_15px_#fff]'}`}>
     <ellipse cy="31" rx="54" ry="20" fill="#382c3d" opacity=".4"/>
     <circle cy="-3" r="39" fill={collected ? '#73717a' : '#496c5d'} stroke="#fff0d8" strokeWidth="6"/>
     <rect x="-25" y="-28" width="50" height="50" rx="13" fill={collected ? '#999096' : '#dce8d0'} stroke="#374053" strokeWidth="5"/>
     {!collected && <Icon x={-16} y={-19} width={32} height={32} color="#3e5964" strokeWidth={2.8} aria-hidden="true"/>}
     {collected && <path d="M-15-11h30M-15-1h30M-15 9h30" stroke="#e4d8ca" strokeWidth="4" strokeLinecap="round"/>}
-    <rect x="-87" y="49" width="174" height="28" rx="14" fill="#342c48" stroke="#fff0d8" strokeWidth="3"/>
-    <text y="69" textAnchor="middle" fill="#fff5de" fontSize="17" fontWeight="800">{collected ? 'Vacío' : `${site.name} · +${site.amount} ${supplyLabels[site.resource]}`}</text>
-    <title>{collected ? `${site.name}: ya lo recogiste.` : site.description}</title>
+    <rect x={-pillWidth / 2} y="49" width={pillWidth} height="28" rx="14" fill="#342c48" stroke="#fff0d8" strokeWidth="3"/>
+    <text y="69" textAnchor="middle" fill="#fff5de" fontSize="17" fontWeight="800">{pillText}</text>
+    <title>{collected ? `${site.name}: already collected.` : site.description}</title>
   </g>
-}
+})
 
-function WorldTerrain() {
+const WorldTerrain = memo(function WorldTerrain() {
   return <g aria-hidden="true">
     <rect width={MARS_WORLD.width} height={MARS_WORLD.height} fill="url(#soil-base)"/>
     <rect width={MARS_WORLD.width} height={MARS_WORLD.height} fill="url(#regolith-grain)"/>
@@ -349,15 +384,15 @@ function WorldTerrain() {
     <RockField x={270} y={650}/><RockField x={2050} y={570}/><RockField x={1280} y={1510}/><RockField x={3030} y={1020}/><RockField x={3720} y={1990}/><RockField x={820} y={2160}/><RockField x={4510} y={1320}/>
     <Dune x={2370} y={1160} size={280}/><Dune x={1000} y={340} size={230}/><Dune x={3480} y={850} size={340}/><Dune x={2200} y={2700} size={310}/><Dune x={4550} y={1990} size={280}/>
     <SurfaceStoneScatter />
-    <g transform="translate(130 1150)"><path d="m0 130 140-75 105 75-105 76Z" fill="#65414d"/><path d="m34 105 106-58 74 45-108 60Z" fill="#ba6b51" opacity=".7"/><text x="92" y="226" textAnchor="middle" fill="#fff0d8" fontSize="34" fontWeight="700">DUNAS DEL SUR</text></g>
-    <g transform="translate(2580 120)"><path d="M0 180 170 0l110 170-120 90Z" fill="#78495a"/><path d="m52 155 118-130 74 133-88 69Z" fill="#d07854"/><text x="135" y="300" textAnchor="middle" fill="#fff0d8" fontSize="32" fontWeight="700">MESAS DEL ESTE</text></g>
-    <g transform="translate(3940 1050)"><path d="m0 340 200-210 240 70 100 210-210 190-250-50-130-120Z" fill="#563a50" stroke="#dd946b" strokeWidth="20"/><ellipse cx="200" cy="320" rx="145" ry="93" fill="#9d554f"/><path d="m100 300 104-90 112 94-112 80Z" fill="#dc996e"/><text x="225" y="500" textAnchor="middle" fill="#fff0d8" fontSize="34" fontWeight="800">CRÁTER VESPER</text></g>
-    <g transform="translate(740 2260)"><path d="m0 130 220-120 220 120-220 128Z" fill="#493449" stroke="#e0a77d" strokeWidth="13"/><path d="M105 121q18-128 115-130 95 4 114 130v105H105Z" fill="#37455c" stroke="#f4dbb4" strokeWidth="14"/><path d="M145 152V67q75-80 150 0v85" fill="none" stroke="#73b0b0" strokeWidth="11"/><circle cx="220" cy="-11" r="18" fill="#ffe59a"/><text x="220" y="340" textAnchor="middle" fill="#fff0d8" fontSize="32" fontWeight="800">ESTACIÓN POLAR</text></g>
-    <g transform="translate(3270 2250)"><path d="m0 190 130-110 150 42 40 110-92 90-172-20-64-78Z" fill="#5f394a" stroke="#dc9269" strokeWidth="12"/><path d="m85 191 82-109 84 143-107 83Z" fill="#cf7453"/><text x="155" y="382" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="800">CAMPAMENTO ANTIGUO</text></g>
-    <g transform="translate(640 1790)"><path d="m0 230 190-120 170 100-44 160-214 22-112-80Z" fill="#2f4350" stroke="#e8c18b" strokeWidth="12"/><path d="m84 260 138-122 90 44-139 131Z" fill="#476476"/><path d="M145 210h65v104h-65Z" fill="#ffd776" stroke="#354455" strokeWidth="9"/><text x="186" y="452" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="800">ROVER VARADO</text></g>
-    <g transform="translate(3190 200)"><path d="m0 150 140-85 140 85-140 82Z" fill="#4b344b"/><path d="M78 130V-20m0 33 66-65m-66 90 85-8m-85 22 64 38" stroke="#f2ddb2" strokeWidth="14" strokeLinecap="round"/><circle cx="78" cy="-20" r="22" fill="#ffdb7e"/><text x="140" y="290" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="800">OBSERVATORIO</text></g>
+    <g transform="translate(130 1150)"><path d="m0 130 140-75 105 75-105 76Z" fill="#65414d"/><path d="m34 105 106-58 74 45-108 60Z" fill="#ba6b51" opacity=".7"/><text x="92" y="226" textAnchor="middle" fill="#fff0d8" fontSize="34" fontWeight="700">SOUTHERN DUNES</text></g>
+    <g transform="translate(2580 120)"><path d="M0 180 170 0l110 170-120 90Z" fill="#78495a"/><path d="m52 155 118-130 74 133-88 69Z" fill="#d07854"/><text x="135" y="300" textAnchor="middle" fill="#fff0d8" fontSize="32" fontWeight="700">EASTERN MESAS</text></g>
+    <g transform="translate(3940 1050)"><path d="m0 340 200-210 240 70 100 210-210 190-250-50-130-120Z" fill="#563a50" stroke="#dd946b" strokeWidth="20"/><ellipse cx="200" cy="320" rx="145" ry="93" fill="#9d554f"/><path d="m100 300 104-90 112 94-112 80Z" fill="#dc996e"/><text x="225" y="500" textAnchor="middle" fill="#fff0d8" fontSize="34" fontWeight="800">VESPER CRATER</text></g>
+    <g transform="translate(740 2260)"><path d="m0 130 220-120 220 120-220 128Z" fill="#493449" stroke="#e0a77d" strokeWidth="13"/><path d="M105 121q18-128 115-130 95 4 114 130v105H105Z" fill="#37455c" stroke="#f4dbb4" strokeWidth="14"/><path d="M145 152V67q75-80 150 0v85" fill="none" stroke="#73b0b0" strokeWidth="11"/><circle cx="220" cy="-11" r="18" fill="#ffe59a"/><text x="220" y="340" textAnchor="middle" fill="#fff0d8" fontSize="32" fontWeight="800">POLAR STATION</text></g>
+    <g transform="translate(3270 2250)"><path d="m0 190 130-110 150 42 40 110-92 90-172-20-64-78Z" fill="#5f394a" stroke="#dc9269" strokeWidth="12"/><path d="m85 191 82-109 84 143-107 83Z" fill="#cf7453"/><text x="155" y="382" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="800">OLD CAMP</text></g>
+    <g transform="translate(640 1790)"><path d="m0 230 190-120 170 100-44 160-214 22-112-80Z" fill="#2f4350" stroke="#e8c18b" strokeWidth="12"/><path d="m84 260 138-122 90 44-139 131Z" fill="#476476"/><path d="M145 210h65v104h-65Z" fill="#ffd776" stroke="#354455" strokeWidth="9"/><text x="186" y="452" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="800">STRANDED ROVER</text></g>
+    <g transform="translate(3190 200)"><path d="m0 150 140-85 140 85-140 82Z" fill="#4b344b"/><path d="M78 130V-20m0 33 66-65m-66 90 85-8m-85 22 64 38" stroke="#f2ddb2" strokeWidth="14" strokeLinecap="round"/><circle cx="78" cy="-20" r="22" fill="#ffdb7e"/><text x="140" y="290" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="800">OBSERVATORY</text></g>
   </g>
-}
+})
 
 function Crater({ x, y, size }: { x: number; y: number; size: number }) {
   return <g transform={`translate(${x} ${y})`}>
@@ -387,41 +422,43 @@ function Dune({ x, y, size }: { x: number; y: number; size: number }) {
   return <g transform={`translate(${x} ${y})`}><path d={`M${-size} ${size * .15}q${size * .38} ${-size * .6} ${size * .72} ${-size * .08}t${size * .7} ${size * .03}v${size * .36}h${-size * 1.42}Z`} fill="#d47a54"/><path d={`M${-size * .72} ${size * .08}q${size * .42} ${-size * .38} ${size * .8} ${-.02}`} fill="none" stroke="#f0aa75" strokeWidth="16" opacity=".65"/></g>
 }
 
-function Habitat({ x, y }: { x: number; y: number }) {
+const Habitat = memo(function Habitat({ x, y }: { x: number; y: number }) {
   return <g transform={`translate(${x} ${y})`}><ellipse cy="125" rx="320" ry="94" fill="#432c3e" opacity=".48" filter="url(#building-shadow)"/><path d="m-230 90 112-86 280 8 118 90-122 86h-280Z" fill="#b4604c" stroke="#f3c18b" strokeWidth="12"/><path d="M-145 64q0-213 145-245Q145-149 145 64Z" fill="url(#habitat-shell)" stroke="#48435a" strokeWidth="22"/><path d="M-112 23q106-134 214-2" fill="none" stroke="#fff4dc" strokeWidth="18" opacity=".6"/><path d="M-54 50v-96q54-65 108 0v96Z" fill="#313958" stroke="#f1d19d" strokeWidth="12"/><path d="M-32 31v-74q32-38 64 0v74Z" fill="#f4a95d"/><path d="M-18-133q18-30 36 0" fill="none" stroke="#52516d" strokeWidth="13"/><circle cy="-134" r="12" fill="#fff3d1"/><path d="m-200 95 26-63 52 3 29 70Zm235 15 27-77 57 1 28 78Z" fill="#dcc9bd" stroke="#4b455e" strokeWidth="14"/><rect x="-24" y="67" width="48" height="20" rx="7" fill="#6ed4e5"/></g>
-}
+})
 
-function SolarArray({ x, y }: { x: number; y: number }) {
+const SolarArray = memo(function SolarArray({ x, y }: { x: number; y: number }) {
   return <g transform={`translate(${x} ${y})`}><ellipse cy="58" rx="255" ry="70" fill="#432c3e" opacity=".4"/><path d="M-160 10 0-88 168 9 0 108Z" fill="url(#solar-lines)" stroke="#d8edf0" strokeWidth="22"/><path d="M-165 13 0 110 166 10" fill="none" stroke="#323b56" strokeWidth="22"/><path d="M0 105v124m-114-185-45 135m273-136 46 136" stroke="#4d465d" strokeWidth="22" strokeLinecap="round"/><circle cy="223" r="20" fill="#dab487"/></g>
-}
+})
 
-function Greenhouse({ x, y }: { x: number; y: number }) {
+const Greenhouse = memo(function Greenhouse({ x, y }: { x: number; y: number }) {
   return <g transform={`translate(${x} ${y})`}><ellipse cy="115" rx="290" ry="88" fill="#432c3e" opacity=".42"/><path d="M-216 109V-20q0-206 216-228 216 22 216 228v129Z" fill="url(#greenhouse-glass)" stroke="#37465b" strokeWidth="24"/><path d="M-167 108V-19q0-147 167-169 167 22 167 169v127" fill="none" stroke="#effbe6" strokeWidth="15" opacity=".82"/><path d="M0-184v290M-212 39H212" stroke="#465267" strokeWidth="18"/><path d="M-166 78q34-108 69 0 32-122 65 0 31-137 64 0 36-102 71 0" fill="none" stroke="#338457" strokeWidth="22"/><path d="M-140 60V-18m78 93V-42M15 77V-54m82 112v-75" stroke="#79bf71" strokeWidth="17"/><path d="M-216 109H216" stroke="#34445c" strokeWidth="27"/></g>
-}
+})
 
-function MapLandmarks() {
+const MapLandmarks = memo(function MapLandmarks() {
   return <g aria-hidden="true">
-    <g transform="translate(1260 640)"><ellipse cy="28" rx="168" ry="55" fill="#553747" opacity=".5"/><path d="m-155 0 155-88 155 88L0 88Z" fill="#d9b17f" stroke="#f3d6aa" strokeWidth="18"/><circle cy="-2" r="51" fill="#65717a"/><circle cy="-2" r="28" fill="#c7a47e"/><text y="143" textAnchor="middle" fill="#fff0d8" fontSize="36" fontWeight="700">PLATAFORMA</text></g>
-    <g transform="translate(2040 1490)"><path d="m0 150 150-80 145 80-145 83Z" fill="#443248" stroke="#c0765a" strokeWidth="12"/><path d="M98 135q15-84 52-83t50 83" fill="#b9654e" stroke="#f2c695" strokeWidth="12"/><circle cx="150" cy="58" r="16" fill="#ffe1a4"/><text x="150" y="285" textAnchor="middle" fill="#fff0d8" fontSize="34" fontWeight="700">ANTENA OESTE</text></g>
-    <g transform="translate(2860 810)"><path d="m0 84 78-54 96 24 31 91-64 65-109-22-45-52Z" fill="#71404b" stroke="#cd7c5d" strokeWidth="9"/><circle cx="-30" cy="-42" r="25" fill="#edd29c"/><path d="M-30-42v-80m0 36 42-42" stroke="#e5d0a8" strokeWidth="9"/><text x="73" y="257" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="700">BALIZA</text></g>
-    <text x="1760" y="560" fill="#fff0d8" opacity=".8" fontSize="42" fontWeight="700" letterSpacing="8">RUTA DE EXPLORACIÓN</text>
+    <g transform="translate(1260 640)"><ellipse cy="28" rx="168" ry="55" fill="#553747" opacity=".5"/><path d="m-155 0 155-88 155 88L0 88Z" fill="#d9b17f" stroke="#f3d6aa" strokeWidth="18"/><circle cy="-2" r="51" fill="#65717a"/><circle cy="-2" r="28" fill="#c7a47e"/><text y="143" textAnchor="middle" fill="#fff0d8" fontSize="36" fontWeight="700">LANDING PAD</text></g>
+    <g transform="translate(2040 1490)"><path d="m0 150 150-80 145 80-145 83Z" fill="#443248" stroke="#c0765a" strokeWidth="12"/><path d="M98 135q15-84 52-83t50 83" fill="#b9654e" stroke="#f2c695" strokeWidth="12"/><circle cx="150" cy="58" r="16" fill="#ffe1a4"/><text x="150" y="285" textAnchor="middle" fill="#fff0d8" fontSize="34" fontWeight="700">WEST ANTENNA</text></g>
+    <g transform="translate(2860 810)"><path d="m0 84 78-54 96 24 31 91-64 65-109-22-45-52Z" fill="#71404b" stroke="#cd7c5d" strokeWidth="9"/><circle cx="-30" cy="-42" r="25" fill="#edd29c"/><path d="M-30-42v-80m0 36 42-42" stroke="#e5d0a8" strokeWidth="9"/><text x="73" y="257" textAnchor="middle" fill="#fff0d8" fontSize="30" fontWeight="700">BEACON</text></g>
+    <text x="1760" y="560" fill="#fff0d8" opacity=".8" fontSize="42" fontWeight="700" letterSpacing="8">EXPLORATION ROUTE</text>
     <path d="m1640 575 54-40 54 40-54 40Z" fill="#ffe17c"/><path d="M1694 534v83" stroke="#44374c" strokeWidth="12"/>
   </g>
-}
+})
 
-function PlotMarker({ plot, selected, occupied, onSelect }: { plot: (typeof marsPlots)[number]; selected: boolean; occupied: boolean; onSelect: () => void }) {
+const PlotMarker = memo(function PlotMarker({ plot, selected, occupied, onSelect }: { plot: (typeof marsPlots)[number]; selected: boolean; occupied: boolean; onSelect: (plotId: string) => void }) {
   const blocked = plot.kind === 'obstacle'
-  const label = blocked ? 'Bloqueada' : occupied ? 'Ocupada' : plot.kind === 'landing-zone' ? 'Referencia' : 'Disponible'
+  const label = blocked ? 'Blocked' : occupied ? 'Occupied' : plot.kind === 'landing-zone' ? 'Landmark' : 'Available'
+  const pillText = `${plot.id} · ${label}`
+  const pillWidth = Math.max(110, pillText.length * 12 + 24)
   const icon = blocked ? <Mountain size={24}/> : plot.kind === 'landing-zone' ? <RadioTower size={24}/> : occupied ? <span aria-hidden="true" className="text-lg">⌂</span> : <Crosshair size={22}/> 
-  return <g transform={`translate(${plot.x} ${plot.y})`} role="button" tabIndex={0} aria-pressed={selected} aria-label={`${plot.label}, ${label}. ${plot.description}`} onClick={(event) => { event.stopPropagation(); onSelect() }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onSelect() } }} className="cursor-pointer outline-none focus-visible:drop-shadow-[0_0_12px_#fff]">
+  return <g transform={`translate(${plot.x} ${plot.y})`} role="button" tabIndex={0} aria-pressed={selected} aria-label={`${plot.label}, ${label}. ${plot.description}`} onClick={(event) => { event.stopPropagation(); onSelect(plot.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onSelect(plot.id) } }} className="cursor-pointer outline-none focus-visible:drop-shadow-[0_0_12px_#fff]">
     <ellipse cy="31" rx="78" ry="31" fill="#392b3e" opacity=".52"/>
     <path d="m-58 0 58-35 58 35L0 35Z" fill={selected ? '#ffe47e' : blocked ? '#6b454b' : occupied ? '#dba778' : '#405773'} stroke={selected ? '#fff6cf' : '#f8ead2'} strokeWidth={selected ? 10 : 7}/>
     <circle cy="-5" r="34" fill={selected ? '#ffe47e' : blocked ? '#65454b' : occupied ? '#a56759' : '#473b62'} stroke="#fff3dc" strokeWidth="6"/>
     <g transform="translate(-12 -17)" fill={selected ? '#392b42' : '#fff6df'}>{icon}</g>
-    <rect x="-55" y="50" width="110" height="26" rx="12" fill="#342c48" stroke="#fff0d8" strokeWidth="3"/>
-    <text y="69" textAnchor="middle" fill="#fff5de" fontSize="20" fontWeight="800">{plot.id} · {label}</text>
+    <rect x={-pillWidth / 2} y="50" width={pillWidth} height="26" rx="12" fill="#342c48" stroke="#fff0d8" strokeWidth="3"/>
+    <text y="69" textAnchor="middle" fill="#fff5de" fontSize="20" fontWeight="800">{pillText}</text>
   </g>
-}
+})
 
 function Astronaut({ x, y, moving, task, facing }: { x: number; y: number; moving: boolean; task?: string; facing: number }) {
   const facingLeft = facing < -45 || facing > 225
@@ -449,17 +486,17 @@ function Astronaut({ x, y, moving, task, facing }: { x: number; y: number; movin
         <path d="M-3 13q3 8 6 0" fill="none" stroke="#394257" strokeWidth="3"/>
       </g>
     </g>
-    {task ? <g className="astronaut-task-tag"><rect x="-86" y="-119" width="172" height="31" rx="15" fill="#342d48" stroke="#fff0d2" strokeWidth="3"/><text y="-98" textAnchor="middle" fill="#fff6df" fontSize="17" fontWeight="900">{task === 'build' ? 'CONSTRUYENDO' : task === 'sow' ? 'SEMBRANDO' : task === 'harvest' ? 'COSECHANDO' : task === 'collect' ? 'RECUPERANDO' : 'A RESGUARDO'}</text></g> : null}
+    {task ? <g className="astronaut-task-tag"><rect x="-86" y="-119" width="172" height="31" rx="15" fill="#342d48" stroke="#fff0d2" strokeWidth="3"/><text y="-98" textAnchor="middle" fill="#fff6df" fontSize="17" fontWeight="900">{task === 'build' ? 'BUILDING' : task === 'sow' ? 'PLANTING' : task === 'harvest' ? 'HARVESTING' : task === 'collect' ? 'COLLECTING' : 'SHELTERED'}</text></g> : null}
   </g>
 }
 
-function CrewVisitor({ visitor, onTalk, disabled }: { visitor: (typeof visitingAstronauts)[number]; onTalk: () => void; disabled: boolean }) {
+const CrewVisitor = memo(function CrewVisitor({ visitor, onTalk, disabled }: { visitor: (typeof visitingAstronauts)[number]; onTalk: (visitorId: string) => void; disabled: boolean }) {
   const handleKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
     if (disabled || (event.key !== 'Enter' && event.key !== ' ')) return
     event.preventDefault()
-    onTalk()
+    onTalk(visitor.id)
   }
-  return <g transform={`translate(${visitor.x} ${visitor.y})`} role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`${visitor.name}, ${visitor.role}. ${disabled ? 'Espera a que termine la construcción.' : 'Toca para acercarte y conversar.'}`} onClick={() => { if (!disabled) onTalk() }} onKeyDown={handleKeyDown} className={`crew-visitor outline-none ${disabled ? 'cursor-not-allowed opacity-75' : 'cursor-pointer transition-[filter] duration-150 hover:drop-shadow-[0_0_16px_#ffe48a] focus-visible:drop-shadow-[0_0_16px_#fff]'}`}>
+  return <g transform={`translate(${visitor.x} ${visitor.y})`} role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`${visitor.name}, ${visitor.role}. ${disabled ? 'Wait until the build is finished.' : 'Tap to walk over and talk.'}`} onClick={() => { if (!disabled) onTalk(visitor.id) }} onKeyDown={handleKeyDown} className={`crew-visitor outline-none ${disabled ? 'cursor-not-allowed opacity-75' : 'cursor-pointer transition-[filter] duration-150 hover:drop-shadow-[0_0_16px_#ffe48a] focus-visible:drop-shadow-[0_0_16px_#fff]'}`}>
     <ellipse cy="17" rx="36" ry="15" fill="#392b3e" opacity=".42"/>
     <g className="crew-visitor-bob">
       <rect x="-28" y="-29" width="17" height="39" rx="7" fill="#46516a" stroke="#efe4d1" strokeWidth="4"/>
@@ -479,11 +516,11 @@ function CrewVisitor({ visitor, onTalk, disabled }: { visitor: (typeof visitingA
     </g>
     <rect x="-53" y="70" width="106" height="26" rx="13" fill="#364153" stroke="#fff0d7" strokeWidth="3"/>
     <text y="89" textAnchor="middle" fill="#fff6e2" fontSize="18" fontWeight="850">{visitor.name}</text>
-    <title>{disabled ? 'Movimiento bloqueado durante la construcción' : 'Haz clic para acercarte y hablar'}</title>
+    <title>{disabled ? 'Movement locked during construction' : 'Click to walk over and talk'}</title>
   </g>
-}
+})
 
-function AlienFlyby({ scenarioId, sol, enabled }: { scenarioId: ScenarioId; sol: number; enabled: boolean }) {
+const AlienFlyby = memo(function AlienFlyby({ scenarioId, sol, enabled }: { scenarioId: ScenarioId; sol: number; enabled: boolean }) {
   const [sighting, setSighting] = useState<{ key: string; flight: ReturnType<typeof createAlienFlightPath> } | null>(null)
   const key = `${scenarioId}:${sol}`
   useEffect(() => {
@@ -495,8 +532,8 @@ function AlienFlyby({ scenarioId, sol, enabled }: { scenarioId: ScenarioId; sol:
       const currentGame = useGameStore.getState().game
       if (!currentGame || currentGame.gameOver || currentGame.sol !== sol) return
       setSighting({ key, flight: createAlienFlightPath(currentGame.mapPosition, schedule.seed) })
-      useGameStore.getState().setNovaLine('¡Comandante, mira arriba! ¡Una nave extraña cruza el valle y se marcha a toda velocidad!')
-      removeTimer = window.setTimeout(() => setSighting(null), 5600)
+      useGameStore.getState().setNovaLine('Commander, look up! A strange ship is crossing the valley at full speed!')
+      removeTimer = window.setTimeout(() => setSighting(null), ALIEN_FLIGHT_MS + 800)
     }, schedule.delayMs)
     return () => {
       window.clearTimeout(appearanceTimer)
@@ -504,13 +541,28 @@ function AlienFlyby({ scenarioId, sol, enabled }: { scenarioId: ScenarioId; sol:
     }
   }, [enabled, key, scenarioId, sol])
   const flight = enabled && sighting?.key === key ? sighting.flight : null
+  const shipRef = useRef<SVGGElement | null>(null)
+  // The flight runs with the Web Animations API from the moment the ship appears.
+  // (The previous SMIL <animateTransform> counted from page load, so a ship added
+  // 20 s later was already "finished" and frozen off-screen, which is why it was never seen.)
+  useEffect(() => {
+    const ship = shipRef.current
+    if (!flight || !ship || typeof ship.animate !== 'function') return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const animation = ship.animate(
+      [{ transform: 'translate(0px, 0px)' }, { transform: `translate(${flight.delta.x}px, ${flight.delta.y}px)` }],
+      { duration: ALIEN_FLIGHT_MS, easing: 'ease-in-out', fill: 'forwards' },
+    )
+    return () => animation.cancel()
+  }, [flight])
   if (!flight) return null
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
-  return <g transform={`translate(${flight.from.x} ${flight.from.y})`} role="img" aria-label="Una nave extraña cruza el cielo y se aleja rápidamente">
-    <title>Una nave extraña cruza el cielo y se aleja rápidamente.</title>
-    <g className="alien-sighting">
-      <animateTransform attributeName="transform" attributeType="XML" type="translate" from="0 0" to={`${flight.delta.x} ${flight.delta.y}`} dur={reducedMotion ? '0.01s' : '4.8s'} fill="freeze"/>
-      <path d="M-210 23q115-54 219 0" fill="none" stroke="#75eff0" strokeWidth="9" strokeLinecap="round" opacity=".24" className="alien-flight-trail"/>
+  // With reduced motion the ship does not fly: it hovers at the middle of its path, near the astronaut.
+  const anchor = reducedMotion ? { x: flight.from.x + flight.delta.x / 2, y: flight.from.y + flight.delta.y / 2 } : flight.from
+  return <g transform={`translate(${anchor.x} ${anchor.y})`} role="img" aria-label="A strange ship crosses the sky and quickly flies away">
+    <title>A strange ship crosses the sky and quickly flies away.</title>
+    <g ref={shipRef} className="alien-sighting">
+      <path transform={flight.delta.x < 0 ? 'scale(-1 1)' : undefined} d="M-210 23q115-54 219 0" fill="none" stroke="#75eff0" strokeWidth="9" strokeLinecap="round" opacity=".24" className="alien-flight-trail"/>
       <ellipse cy="21" rx="86" ry="19" fill="#392c45" opacity=".45"/>
       <ellipse cy="2" rx="80" ry="22" fill="#d8d5dc" stroke="#49425e" strokeWidth="8"/>
       <path d="M-39 0q4-42 39-43 36 1 40 43" fill="#b6e1dc" stroke="#49425e" strokeWidth="7"/>
@@ -522,14 +574,14 @@ function AlienFlyby({ scenarioId, sol, enabled }: { scenarioId: ScenarioId; sol:
       <ellipse cy="-21" rx="13" ry="15" fill="#a5d58d" stroke="#43576a" strokeWidth="4"/>
       <path d="m-8-22 3 2m13-2-3 2" stroke="#37425c" strokeWidth="4" strokeLinecap="round"/>
       <path d="M0-35v-7" stroke="#43576a" strokeWidth="3"/><circle cy="-44" r="4" fill="#f5cb67"/>
-      <text x="0" y="53" textAnchor="middle" fill="#fff5df" stroke="#3c334c" strokeWidth="5" paintOrder="stroke" fontSize="16" fontWeight="900">¡SE ALEJA!</text>
+      <text x="0" y="53" textAnchor="middle" fill="#fff5df" stroke="#3c334c" strokeWidth="5" paintOrder="stroke" fontSize="16" fontWeight="900">WHOOSH!</text>
     </g>
   </g>
-}
+})
 
 function NovaCompanion({ x, y, onRepeat }: { x: number; y: number; onRepeat: () => void }) {
-  return <g transform={`translate(${x} ${y}) scale(.72)`} role="button" tabIndex={0} aria-label="NOVA. Tócame para repetir mi último mensaje." onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRepeat() }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onRepeat() } }} className="cursor-pointer outline-none focus-visible:drop-shadow-[0_0_16px_#fff]">
-    <title>Tócame para escuchar otra vez</title>
+  return <g transform={`translate(${x} ${y}) scale(.72)`} role="button" tabIndex={0} aria-label="NOVA. Tap me to repeat my last message." onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRepeat() }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onRepeat() } }} className="cursor-pointer outline-none focus-visible:drop-shadow-[0_0_16px_#fff]">
+    <title>Tap me to hear it again</title>
     <g className="nova-float" aria-hidden="true">
       <circle cy="-5" r="66" fill="#65e4e9" opacity=".12"/>
       <path d="M-25-16Q-83-57-76-10q5 30 48 30m53-36Q83-57 76-10q-5 30-48 30" fill="#7de9ec" fillOpacity=".58" stroke="#e4ffff" strokeWidth="5"/>
@@ -549,8 +601,8 @@ function NovaCompanion({ x, y, onRepeat }: { x: number; y: number; onRepeat: () 
 }
 
 function ConstructionAnimation({ x, y }: { x: number; y: number }) {
-  return <g transform={`translate(${x} ${y})`} role="img" aria-label="Construcción en curso: termina al avanzar el sol">
-    <title>La obra sigue en montaje hasta que se cierre este sol.</title>
+  return <g transform={`translate(${x} ${y})`} role="img" aria-label="Construction in progress: finishes when the sol advances">
+    <title>The structure is being assembled until this sol closes.</title>
     <ellipse cy="32" rx="270" ry="112" fill="#ffd577" opacity=".12" className="construction-glow"/>
     <path d="M-235 62V-92H235V62M-235-22H235M-165-92V62m110-154V62M55-92V62m110-154V62" fill="none" stroke="#ffe09a" strokeWidth="10" strokeDasharray="18 14" opacity=".88" className="construction-frame"/>
     <path d="M-210-112 0-194 212-112" fill="none" stroke="#fff0c6" strokeWidth="12" strokeLinecap="round" className="construction-glow"/>
@@ -558,26 +610,26 @@ function ConstructionAnimation({ x, y }: { x: number; y: number }) {
     <circle cx="164" cy="-116" r="10" fill="#62e4e7" className="construction-spark construction-spark-delay"/>
     <path d="M0-190v94m-24-18 24 20 25-20" fill="none" stroke="#433650" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
     <rect x="-176" y="-244" width="352" height="42" rx="20" fill="#3d334e" stroke="#fff0c6" strokeWidth="5"/>
-    <text y="-216" textAnchor="middle" fill="#fff5dc" fontSize="25" fontWeight="900" letterSpacing="1">CONSTRUCCIÓN · 1 SOL</text>
+    <text y="-216" textAnchor="middle" fill="#fff5dc" fontSize="25" fontWeight="900" letterSpacing="1">CONSTRUCTION · 1 SOL</text>
   </g>
 }
 
 function WorldRadar({ x, y }: { x: number; y: number }) {
-  return <div data-map-ui="true" aria-label="Radar de exploración; el punto amarillo muestra tu posición" className="absolute right-3 top-[4.8rem] z-20 hidden overflow-hidden rounded-2xl border-2 border-white/75 bg-[#322947]/90 p-2 shadow-xl sm:block">
-    <svg viewBox={`0 0 ${MARS_WORLD.width} ${MARS_WORLD.height}`} role="img" aria-label="Radar de toda la superficie de juego" className="h-20 w-28 rounded-xl sm:h-24 sm:w-36">
-      <rect width={MARS_WORLD.width} height={MARS_WORLD.height} rx="80" fill="#a75547"/><path d="M0 1050Q1100 670 2050 980t1750-100" fill="none" stroke="#f1b17b" strokeWidth="180"/><path d="M250 2670Q1350 1950 2250 2490t2300-200" fill="none" stroke="#724351" strokeWidth="130"/><circle cx="2650" cy="430" r="280" fill="#633c4c"/>{visitingAstronauts.map((visitor) => <circle key={visitor.id} cx={visitor.x} cy={visitor.y} r="58" fill="#75d9d4" stroke="#fff1d2" strokeWidth="24"><title>{visitor.name}, astronauta en el valle</title></circle>)}<circle cx={x} cy={y} r="92" fill="#ffe478" stroke="#fff7d5" strokeWidth="35"/>
+  return <div data-map-ui="true" aria-label="Exploration radar; the yellow dot shows your position" className="absolute right-3 top-[4.8rem] z-20 hidden overflow-hidden rounded-2xl border-2 border-white/75 bg-[#322947]/90 p-2 shadow-xl sm:block">
+    <svg viewBox={`0 0 ${MARS_WORLD.width} ${MARS_WORLD.height}`} role="img" aria-label="Radar of the whole play area" className="h-20 w-28 rounded-xl sm:h-24 sm:w-36">
+      <rect width={MARS_WORLD.width} height={MARS_WORLD.height} rx="80" fill="#a75547"/><path d="M0 1050Q1100 670 2050 980t1750-100" fill="none" stroke="#f1b17b" strokeWidth="180"/><path d="M250 2670Q1350 1950 2250 2490t2300-200" fill="none" stroke="#724351" strokeWidth="130"/><circle cx="2650" cy="430" r="280" fill="#633c4c"/>{visitingAstronauts.map((visitor) => <circle key={visitor.id} cx={visitor.x} cy={visitor.y} r="58" fill="#75d9d4" stroke="#fff1d2" strokeWidth="24"><title>{visitor.name}, astronaut in the valley</title></circle>)}<circle cx={x} cy={y} r="92" fill="#ffe478" stroke="#fff7d5" strokeWidth="35"/>
     </svg>
     <p className="px-1 pt-1 text-center text-[9px] font-black tracking-[.12em] text-white">RADAR · {Math.round(x / MARS_WORLD.width * 100)}% / {Math.round(y / MARS_WORLD.height * 100)}%</p>
   </div>
 }
 
-function AccessiblePlotList({ selectedPlotId, onSelect, immersive }: { selectedPlotId: string | null; onSelect: (plotId: string) => void; immersive: boolean }) {
-  return <details data-map-ui="true" className={immersive ? 'sr-only' : 'border-t border-[#dec4a7] bg-[#fff3df] px-4 py-2 text-xs text-[#51434f] sm:px-6'}><summary className="min-h-11 cursor-pointer py-3 font-extrabold focus-visible:outline-2 focus-visible:outline-[#493963]">Ver parcelas y estado en texto</summary><ul className="grid gap-2 pb-3 sm:grid-cols-2 lg:grid-cols-4">{marsPlots.map((plot) => <li key={plot.id}><button type="button" aria-pressed={selectedPlotId === plot.id} onClick={() => onSelect(plot.id)} className="min-h-11 w-full rounded-xl border border-[#e0c6a9] bg-white px-3 py-2 text-left hover:bg-[#fff8ed] focus-visible:outline-2 focus-visible:outline-[#493963]"><strong className="block">{plot.label}: {plot.kind === 'obstacle' ? 'Bloqueada' : plot.kind === 'occupied' ? 'Ocupada al inicio' : plot.kind === 'landing-zone' ? 'Zona de referencia' : 'Disponible para construir'}</strong><span>{plot.description}</span></button></li>)}</ul></details>
-}
+const AccessiblePlotList = memo(function AccessiblePlotList({ selectedPlotId, onSelect, immersive }: { selectedPlotId: string | null; onSelect: (plotId: string) => void; immersive: boolean }) {
+  return <details data-map-ui="true" className={immersive ? 'sr-only' : 'border-t border-[#dec4a7] bg-[#fff3df] px-4 py-2 text-xs text-[#51434f] sm:px-6'}><summary className="min-h-11 cursor-pointer py-3 font-extrabold focus-visible:outline-2 focus-visible:outline-[#493963]">View plots and status as text</summary><ul className="grid gap-2 pb-3 sm:grid-cols-2 lg:grid-cols-4">{marsPlots.map((plot) => <li key={plot.id}><button type="button" aria-pressed={selectedPlotId === plot.id} onClick={() => onSelect(plot.id)} className="min-h-11 w-full rounded-xl border border-[#e0c6a9] bg-white px-3 py-2 text-left hover:bg-[#fff8ed] focus-visible:outline-2 focus-visible:outline-[#493963]"><strong className="block">{plot.label}: {plot.kind === 'obstacle' ? 'Blocked' : plot.kind === 'occupied' ? 'Occupied at start' : plot.kind === 'landing-zone' ? 'Landmark area' : 'Available to build'}</strong><span>{plot.description}</span></button></li>)}</ul></details>
+})
 
-function DirectionPad({ onMove, onHold, immersive, disabled }: { onMove: (direction: 'up' | 'down' | 'left' | 'right') => void; onHold: (direction: 'up' | 'down' | 'left' | 'right', held: boolean) => void; immersive: boolean; disabled: boolean }) {
-  return <div data-map-ui="true" role="group" aria-label={disabled ? 'Movimiento bloqueado durante la construcción' : 'Controles del astronauta'} className={immersive ? 'absolute bottom-24 left-6 z-30 grid grid-cols-3 gap-1' : 'absolute bottom-3 right-3 z-30 grid grid-cols-3 gap-1 sm:bottom-5 sm:right-5 sm:hidden'} onPointerDown={(event) => event.stopPropagation()}><span/><DirectionButton disabled={disabled} label="Caminar hacia el norte" icon={<ChevronUp size={20}/>} onClick={() => onMove('up')} onHold={(held) => onHold('up', held)}/><span/><DirectionButton disabled={disabled} label="Caminar hacia el oeste" icon={<ChevronLeft size={20}/>} onClick={() => onMove('left')} onHold={(held) => onHold('left', held)}/><span className={`grid size-11 place-items-center rounded-xl bg-[#f0e3ce] text-xl ${disabled ? 'opacity-60' : ''}`} aria-hidden="true">🧑‍🚀</span><DirectionButton disabled={disabled} label="Caminar hacia el este" icon={<ChevronRight size={20}/>} onClick={() => onMove('right')} onHold={(held) => onHold('right', held)}/><span/><DirectionButton disabled={disabled} label="Caminar hacia el sur" icon={<ChevronDown size={20}/>} onClick={() => onMove('down')} onHold={(held) => onHold('down', held)}/><span/></div>
-}
+const DirectionPad = memo(function DirectionPad({ onMove, onHold, immersive, disabled }: { onMove: (direction: 'up' | 'down' | 'left' | 'right') => void; onHold: (direction: 'up' | 'down' | 'left' | 'right', held: boolean) => void; immersive: boolean; disabled: boolean }) {
+  return <div data-map-ui="true" role="group" aria-label={disabled ? 'Movement locked during construction' : 'Astronaut controls'} className={immersive ? 'absolute bottom-24 left-6 z-30 grid grid-cols-3 gap-1' : 'absolute bottom-3 right-3 z-30 grid grid-cols-3 gap-1 sm:bottom-5 sm:right-5 sm:hidden'} onPointerDown={(event) => event.stopPropagation()}><span/><DirectionButton disabled={disabled} label="Walk north" icon={<ChevronUp size={20}/>} onClick={() => onMove('up')} onHold={(held) => onHold('up', held)}/><span/><DirectionButton disabled={disabled} label="Walk west" icon={<ChevronLeft size={20}/>} onClick={() => onMove('left')} onHold={(held) => onHold('left', held)}/><span className={`grid size-11 place-items-center rounded-xl bg-[#f0e3ce] text-xl ${disabled ? 'opacity-60' : ''}`} aria-hidden="true">🧑‍🚀</span><DirectionButton disabled={disabled} label="Walk east" icon={<ChevronRight size={20}/>} onClick={() => onMove('right')} onHold={(held) => onHold('right', held)}/><span/><DirectionButton disabled={disabled} label="Walk south" icon={<ChevronDown size={20}/>} onClick={() => onMove('down')} onHold={(held) => onHold('down', held)}/><span/></div>
+})
 
 function DirectionButton({ label, icon, onClick, onHold, disabled }: { label: string; icon: ReactNode; onClick: () => void; onHold: (held: boolean) => void; disabled: boolean }) {
   return <button type="button" disabled={disabled} aria-label={label} onClick={(event) => { if (event.detail === 0) onClick() }} onPointerDown={() => onHold(true)} onPointerUp={() => onHold(false)} onPointerCancel={() => onHold(false)} onPointerLeave={() => onHold(false)} className="grid size-11 touch-manipulation place-items-center rounded-xl border-2 border-white bg-[#423452]/95 text-white shadow-lg hover:bg-[#66507a] focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-[#332f52] disabled:cursor-not-allowed disabled:opacity-45">{icon}</button>

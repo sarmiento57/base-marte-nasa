@@ -27,9 +27,9 @@ export function advanceSol(state: GameState): GameState {
   const gainedEnergy = working.resources.energy - beforeSolar
   working = addTurnLog(working, {
     sol,
-    action: 'Generación solar',
+    action: 'Solar power',
     cost: '',
-    consequence: storm ? `Los paneles generaron ${gainedEnergy} de energía durante la tormenta.` : `Los paneles generaron ${gainedEnergy} de energía.`,
+    consequence: storm ? `The panels made ${gainedEnergy} energy during the storm.` : `The panels made ${gainedEnergy} energy.`,
     resourceDeltas: { energy: gainedEnergy },
     kind: 'turn',
   })
@@ -47,9 +47,9 @@ export function advanceSol(state: GameState): GameState {
   }
   working = addTurnLog(working, {
     sol,
-    action: 'Soporte vital',
-    cost: '−10 energía, −2 agua y −3 comida solicitadas',
-    consequence: missed.length ? `No alcanzó ${missed.map((resource) => ({ energy: 'energía', water: 'agua', food: 'comida' })[resource]).join(', ')} para cubrir todo el soporte vital.` : 'El soporte vital mantuvo a la tripulación con vida.',
+    action: 'Life support',
+    cost: '−10 energy, −2 water and −3 food needed',
+    consequence: missed.length ? `Not enough ${missed.map((resource) => ({ energy: 'energy', water: 'water', food: 'food' })[resource]).join(', ')} to cover all of life support.` : 'Life support kept the crew alive.',
     resourceDeltas: supportDeltas,
     kind: 'turn',
   })
@@ -70,9 +70,9 @@ export function advanceSol(state: GameState): GameState {
       }
       working = addTurnLog(working, {
         sol,
-        action: 'Crecimiento del cultivo',
-        cost: `−${mode.energy} energía, −${mode.water} agua`,
-        consequence: `El cultivo creció ${mode.growth} puntos y llegó a ${working.crop.growth} %.`,
+        action: 'Crop growth',
+        cost: `−${mode.energy} energy, −${mode.water} water`,
+        consequence: `The crop grew ${mode.growth} points and reached ${working.crop.growth} %.`,
         resourceDeltas: { energy: -mode.energy, water: -mode.water },
         kind: 'turn',
       })
@@ -83,12 +83,12 @@ export function advanceSol(state: GameState): GameState {
         ...working,
         crop: { ...working.crop, consecutiveOffSols, health: Math.max(0, working.crop.health - healthLoss) },
       }
-      const reason = working.crop.mode === 'off' ? 'El modo está apagado' : !enoughEnergy ? 'Faltó energía' : 'Faltó agua'
+      const reason = working.crop.mode === 'off' ? 'The mode is off' : !enoughEnergy ? 'Not enough energy' : 'Not enough water'
       working = addTurnLog(working, {
         sol,
-        action: 'Cultivo pausado',
+        action: 'Crop paused',
         cost: '',
-        consequence: `${reason}; el cultivo no creció.${healthLoss ? ` Perdió ${healthLoss} de salud por otra pausa consecutiva.` : ''}`,
+        consequence: `${reason}; the crop did not grow.${healthLoss ? ` It lost ${healthLoss} health from another pause in a row.` : ''}`,
         resourceDeltas: {},
         kind: 'turn',
       })
@@ -101,14 +101,14 @@ export function advanceSol(state: GameState): GameState {
       ? 'risk'
       : 'stable'
   const reason = missed.length
-    ? `No se cubrió ${missed.map((resource) => ({ energy: 'la energía', water: 'el agua', food: 'la comida' })[resource]).join(', ')} del soporte vital.`
+    ? `Life support was missing ${missed.map((resource) => ({ energy: 'energy', water: 'water', food: 'food' })[resource]).join(', ')}.`
     : working.resources.energy < GAME_CONFIG.energyRiskBelow
-      ? 'Queda poca energía después de cubrir las necesidades de la colonia.'
+      ? 'Energy is low after covering what the colony needs.'
       : working.resources.water < GAME_CONFIG.waterRiskBelow
-        ? 'Queda poca agua después de cubrir las necesidades de la colonia.'
+        ? 'Water is low after covering what the colony needs.'
         : working.resources.food < GAME_CONFIG.foodRiskBelow
-          ? 'Queda poca comida después de cubrir las necesidades de la colonia.'
-          : 'Las reservas de soporte vital están estables.'
+          ? 'Food is low after covering what the colony needs.'
+          : 'Life-support reserves are stable.'
   working = {
     ...working,
     lifeSupport,
@@ -127,9 +127,9 @@ export function advanceSol(state: GameState): GameState {
     nextCrop = { ...nextCrop, mode: 'normal' }
     working = addTurnLog({ ...working, crop: nextCrop }, {
       sol: nextSol,
-      action: 'Fin de la tormenta',
+      action: 'Storm over',
       cost: '',
-      consequence: 'La tormenta terminó; el cultivo vuelve automáticamente al modo normal.',
+      consequence: 'The storm is over; the crop goes back to normal mode automatically.',
       resourceDeltas: {},
       kind: 'turn',
     })

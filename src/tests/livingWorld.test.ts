@@ -21,11 +21,29 @@ describe('living Mars world', () => {
     }
   })
 
-  it('keeps an alien ship moving away from the astronaut near map edges', () => {
+  it('always shows the alien ship on the first sol of every route', () => {
+    for (const scenario of ['standard', 'reserve-rich', 'early-events'] as const) {
+      expect(createAlienFlybySchedule(scenario, 1)).not.toBeNull()
+    }
+  })
+
+  it('keeps an alien ship on a long flight inside the map near map edges', () => {
     const flight = createAlienFlightPath({ x: 0, y: 0 }, 32_767)
     expect(Math.hypot(flight.delta.x, flight.delta.y)).toBeGreaterThan(800)
     expect(flight.from.x).toBeGreaterThan(0)
     expect(flight.from.y).toBeGreaterThan(0)
+  })
+
+  it('flies the alien ship across the view, passing close to the astronaut', () => {
+    const astronaut = { x: 2400, y: 1600 }
+    for (const seed of [1, 9_999, 32_767, 65_535]) {
+      const { from, delta } = createAlienFlightPath(astronaut, seed)
+      const length = Math.hypot(delta.x, delta.y)
+      const t = Math.max(0, Math.min(1, ((astronaut.x - from.x) * delta.x + (astronaut.y - from.y) * delta.y) / (length * length)))
+      const closest = Math.hypot(from.x + delta.x * t - astronaut.x, from.y + delta.y * t - astronaut.y)
+      expect(length).toBeGreaterThan(1200)
+      expect(closest).toBeLessThan(400)
+    }
   })
 
   it('adds a deterministic, detailed regolith scatter across the wide map', () => {

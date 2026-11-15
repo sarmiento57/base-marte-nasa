@@ -2,26 +2,26 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import App from '../app/App'
 
-describe('Base Marte launch screen', () => {
+describe('Mars Base launch screen', () => {
   it('opens in the game camp with a playable mission start', () => {
     const markup = renderToStaticMarkup(<App />)
-    expect(markup).toContain('Una nueva vida empieza en')
-    expect(markup).toContain('Empezar a jugar')
-    expect(markup).toContain('Explora un valle marciano enorme')
+    expect(markup).toContain('A new life begins on')
+    expect(markup).toContain('Start playing')
+    expect(markup).toContain('Explore a huge Martian valley')
   })
 
   it('offers deterministic mission routes and the game guide', () => {
     const markup = renderToStaticMarkup(<App />)
-    expect(markup).toContain('Primer vuelo')
-    expect(markup).toContain('Reserva reforzada')
-    expect(markup).toContain('Señales tempranas')
-    expect(markup).toContain('Cómo jugar')
+    expect(markup).toContain('First flight')
+    expect(markup).toContain('Extra reserves')
+    expect(markup).toContain('Early signals')
+    expect(markup).toContain('How to play')
   })
 
   it('keeps NOVA and the science section available from the opening screen', () => {
     const markup = renderToStaticMarkup(<App />)
     expect(markup).toContain('NOVA')
-    expect(markup).toContain('Ciencia')
-    expect(markup).toContain('sin conexión')
+    expect(markup).toContain('Science')
+    expect(markup).toContain('offline')
   })
 })

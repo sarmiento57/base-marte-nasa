@@ -15,34 +15,34 @@ function futureEffects(state: GameState, command: GameCommand): string[] {
   switch (command.type) {
     case 'build':
       return command.building === 'solar'
-        ? ['Al cerrar un sol, el segundo panel aporta +6 energía; +2 durante la tormenta.']
-        : ['El invernadero permite sembrar en un próximo sol; construirlo no inicia el cultivo.']
+        ? ['When a sol closes, the second panel adds +6 energy; +2 during the storm.']
+        : ['The greenhouse lets you plant on a later sol; building it does not start a crop.']
     case 'sow':
-      return ['El cultivo empezará con 0 % de crecimiento y solo crecerá al avanzar si hay energía y agua.', 'La cosecha dependerá del crecimiento, la salud y los eventos futuros.']
+      return ['The crop will start at 0 % growth and only grows when the sol advances with enough energy and water.', 'The harvest will depend on growth, health and future events.']
     case 'harvest':
-      return [`La comida añadida depende de la salud actual y del espacio disponible en el almacén (${state.resources.food}/100).`]
+      return [`The food added depends on current health and free storage space (${state.resources.food}/100).`]
     case 'setMode': {
       const mode = GREENHOUSE_MODE[command.mode]
-      return [`Al avanzar, el modo ${command.mode === 'saving' ? 'ahorro' : command.mode === 'off' ? 'apagado' : 'normal'} usa ${mode.energy} energía y ${mode.water} agua para hasta ${mode.growth} de crecimiento, si el soporte vital deja reservas suficientes.`]
+      return [`When the sol advances, ${command.mode === 'saving' ? 'saving' : command.mode === 'off' ? 'off' : 'normal'} mode uses ${mode.energy} energy and ${mode.water} water for up to ${mode.growth} growth, if life support leaves enough reserves.`]
     }
     case 'accelerateCrop':
-      return [`El impulso consume ${GAME_CONFIG.cropBoost.energy} energía y adelanta hasta ${GAME_CONFIG.cropBoost.growth} puntos ahora. El crecimiento normal del sol se calcula al cerrarlo si quedan energía y agua.`]
+      return [`The boost uses ${GAME_CONFIG.cropBoost.energy} energy and adds up to ${GAME_CONFIG.cropBoost.growth} points now. Normal growth is calculated when the sol closes, if energy and water remain.`]
     case 'resolveDust':
       return command.choice === 'saving'
-        ? ['En los soles restantes de la tormenta, la energía solar baja; el cultivo ahorra recursos y crece más despacio.']
-        : ['En los soles restantes de la tormenta, la energía solar baja mientras el cultivo sigue con su consumo normal.']
+        ? ['For the rest of the storm, solar power drops; the crop saves resources and grows more slowly.']
+        : ['For the rest of the storm, solar power drops while the crop keeps its normal consumption.']
     case 'resolveSolar':
       return command.choice === 'shelter'
-        ? ['La tripulación queda protegida este sol; el cultivo puede continuar si conserva recursos suficientes.']
-        : ['El nivel de exposición queda en 60; si llega a 50 o más, no se puede ganar.']
+        ? ['The crew is protected this sol; the crop can keep growing if it has enough resources.']
+        : ['The exposure level becomes 60; at 50 or more you cannot win.']
     case 'missSolarDeadline':
-      return ['La ventana terminó sin refugio; el nivel de exposición sube 60 puntos.']
+      return ['The window closed without shelter; the exposure level rises 60 points.']
     case 'advance':
-      return [`Avanzar antes de tiempo gasta ${GAME_CONFIG.fastForwardEnergyCost} de energía además del soporte vital y el cultivo de este sol.`, 'El siguiente estado depende de las reservas y de las alertas.']
+      return [`Advancing early costs ${GAME_CONFIG.fastForwardEnergyCost} energy on top of this sol's life support and crop use.`, 'What happens next depends on your reserves and the alerts.']
     case 'advanceTimed':
-      return ['Al terminar los seis minutos, el sol se cierra sin costo de adelanto y aplica soporte vital, producción y crecimiento.']
+      return ['When the six minutes are up, the sol closes with no early fee and applies life support, production and growth.']
     case 'collectSupply':
-      return ['La tripulación recogerá el contenido disponible y ocupará su tarea de este sol.']
+      return ['The crew will collect the contents and use up its task for this sol.']
   }
 }
 
@@ -54,6 +54,6 @@ export function previewDecision(state: GameState, command: GameCommand): Decisio
     immediateDeltas: result.ok ? deltasBetween(state, result.state) : {},
     conditionalEffects: futureEffects(state, command),
     affectedSols: command.type === 'resolveDust' ? [state.eventSols.dust, state.eventSols.dust + 1] : [state.sol],
-    assumptions: ['El cálculo toma en cuenta tus reservas y el estado actual de la colonia.', 'Los efectos futuros dependen de tus decisiones y de los recursos que queden al cerrar el sol.'],
+    assumptions: ['This estimate uses your reserves and the current colony state.', 'Future effects depend on your decisions and the resources left when the sol closes.'],
   }
 }

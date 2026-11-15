@@ -9,7 +9,7 @@ import { supplySites } from '../data/mars/supplies'
 
 const SAVE_KEY = 'base-marte-save-v1'
 const SAVE_VERSION = 1
-const NOVA_WELCOME = '¡Hola! Soy NOVA, tu asistente de misión. Te acompañaré por Marte. Primer paso: explora el valle, revisa tus reservas y elige una parcela libre para construir.'
+const NOVA_WELCOME = 'Hi! I am NOVA, your mission assistant. I will be with you on Mars. First step: explore the valley, check your reserves and choose a free plot to build on.'
 export type GameScreen = 'home' | 'howto' | 'game' | 'science' | 'report'
 
 interface GameStore {
@@ -79,33 +79,33 @@ function removeSave(): void {
 }
 
 function novaTaskMessage(command: GameCommand, game: GameState): string {
-  if (game.gameOver) return game.won ? '¡Lo logramos, comandante! La base completó la misión. Toca mis alas cuando quieras que te repita este mensaje.' : `La misión terminó. ${game.lifeSupportReason} Abre el informe para revisar qué ocurrió y cómo intentarlo de nuevo.`
+  if (game.gameOver) return game.won ? 'We did it, commander! The base completed the mission. Tap my wings any time to hear this message again.' : `The mission is over. ${game.lifeSupportReason} Open the report to see what happened and how to try again.`
   if (command.type === 'build') {
-    const name = command.building === 'greenhouse' ? 'Invernadero' : 'Panel solar'
-    return `Empezó la construcción del ${name.toLowerCase()}. La estructura se ve en montaje; la tripulación queda ocupada hasta que cierres este sol.`
+    const name = command.building === 'greenhouse' ? 'Greenhouse' : 'Solar panel'
+    return `Construction of the ${name.toLowerCase()} has started. You can see it being assembled; the crew stays busy until you close this sol.`
   }
   if (command.type === 'collectSupply') {
     const site = supplySites.find((item) => item.id === command.siteId)
     const amount = site ? game.log.at(-1)?.resourceDeltas[site.resource] ?? site.amount : 0
-    return site ? `¡Suministros recuperados! ${site.name}: +${amount} ${({ energy: 'energía', water: 'agua', food: 'comida', spareParts: 'repuestos', seeds: 'semillas' } as const)[site.resource]}. La tripulación ya realizó su tarea de este sol.` : '¡Suministros recuperados para la colonia!'
+    return site ? `Supplies recovered! ${site.name}: +${amount} ${({ energy: 'energy', water: 'water', food: 'food', spareParts: 'spare parts', seeds: 'seeds' } as const)[site.resource]}. The crew has done its task for this sol.` : 'Supplies recovered for the colony!'
   }
-  if (command.type === 'sow') return '¡Semillas plantadas! El cultivo crece cuando cierras cada sol. En modo normal tarda unos 5 avances de sol en llegar al 100 %, si hay agua y energía.'
-  if (command.type === 'accelerateCrop') return '¡Impulso activado! Usé 12 de energía para adelantar hasta 20 puntos de crecimiento. Puedes impulsarlo una vez en cada sol.'
-  if (command.type === 'harvest') return '¡Cosecha lista! Revisa la comida y tus objetivos. Pulsa «Avanzar sol» cuando quieras cerrar esta jornada.'
+  if (command.type === 'sow') return 'Seeds planted! The crop grows each time you close a sol. In normal mode it takes about 5 sols to reach 100 %, if there is water and energy.'
+  if (command.type === 'accelerateCrop') return 'Boost on! I used 12 energy to add up to 20 growth points. You can boost once per sol.'
+  if (command.type === 'harvest') return 'Harvest done! Check your food and objectives. Press “Advance sol” when you want to close this workday.'
   if (command.type === 'setMode') return command.mode === 'off'
-    ? 'El invernadero está apagado: el cultivo queda en pausa. Puedes volver a activarlo o cerrar el sol cuando estés lista.'
-    : `Modo ${command.mode === 'saving' ? 'ahorro' : 'normal'} seleccionado. Cada vez que avances el sol revisaré recursos y crecimiento; el ritmo depende de este modo.`
-  if (command.type === 'resolveDust') return `Elegiste ${command.choice === 'saving' ? 'ahorrar energía' : 'mantener el ritmo normal'} durante la tormenta. Pulsa «Avanzar sol» para aplicar sus efectos.`
+    ? 'The greenhouse is off: the crop is paused. You can turn it back on or close the sol when you are ready.'
+    : `${command.mode === 'saving' ? 'Saving' : 'Normal'} mode selected. Each time you advance the sol I will check resources and growth; the pace depends on this mode.`
+  if (command.type === 'resolveDust') return `You chose to ${command.choice === 'saving' ? 'save energy' : 'keep the normal pace'} during the storm. Press “Advance sol” to apply the effects.`
   if (command.type === 'resolveSolar') return command.choice === 'shelter'
-    ? 'La tripulación quedó a resguardo. Pulsa «Avanzar sol» para cerrar esta jornada y actualizar los recursos.'
-    : 'Decidiste continuar durante la alerta. Pulsa «Avanzar sol» para cerrar la jornada y ver las consecuencias.'
-  if (command.type === 'missSolarDeadline') return 'La ventana del refugio terminó. El nivel de exposición subió 60 puntos; revisa la bitácora.'
+    ? 'The crew is safe. Press “Advance sol” to close this workday and update resources.'
+    : 'You chose to keep going during the alert. Press “Advance sol” to close the workday and see the consequences.'
+  if (command.type === 'missSolarDeadline') return 'The shelter window closed. The exposure level rose 60 points; check the logbook.'
   if (command.type === 'advance' || command.type === 'advanceTimed') {
     const event = game.events.find((item) => item.sol === game.sol && !item.resolved)
-    if (event?.kind === 'dust') return `Empezó el sol ${game.sol} y hay tormenta de polvo. Abre Alertas para elegir cómo cuidar el cultivo.`
-    if (event?.kind === 'solar') return `¡Alerta solar! Camina hasta la nave y entra antes de 00:${String(GAME_CONFIG.solarShelterWindowSeconds).padStart(2, '0')} para proteger al equipo. Sin refugio, sube el nivel de exposición.`
-    if (command.type === 'advanceTimed') return `Pasaron seis minutos de juego. Comenzó el sol ${game.sol} de ${game.maxSols}; energía, soporte vital y cultivo ya se actualizaron.`
-    return `Cerraste el día. Ahora es el sol ${game.sol} de ${game.maxSols}. Revisa energía, agua y crecimiento antes de elegir tu siguiente tarea.`
+    if (event?.kind === 'dust') return `Sol ${game.sol} has started and there is a dust storm. Open Alerts to choose how to protect the crop.`
+    if (event?.kind === 'solar') return `Solar alert! Walk to the ship and get inside within 00:${String(GAME_CONFIG.solarShelterWindowSeconds).padStart(2, '0')} to protect the crew. Without shelter, the exposure level goes up.`
+    if (command.type === 'advanceTimed') return `Six minutes of play have passed. Sol ${game.sol} of ${game.maxSols} has started; energy, life support and crop are updated.`
+    return `You closed the day. It is now sol ${game.sol} of ${game.maxSols}. Check energy, water and growth before choosing your next task.`
   }
   return NOVA_WELCOME
 }
@@ -132,14 +132,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const game = createInitialGame(get().selectedScenarioId)
     const solStartedAt = Date.now()
     persistGame(game)
-    set({ game, solStartedAt, screen: 'game', savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: '¡Hola, comandante! Tu misión comienza en el sol 1.' })
+    set({ game, solStartedAt, screen: 'game', savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: 'Hello, commander! Your mission starts on sol 1.' })
   },
-  continueGame: () => set((state) => state.game ? { screen: 'game', solStartedAt: Date.now(), novaLine: `¡Qué bueno verte de nuevo, comandante! Seguimos en el sol ${state.game.sol}. Revisa tus reservas y te acompaño con el siguiente paso.`, novaSpeechVersion: state.novaSpeechVersion + 1, novaSpeechVisible: true } : {}),
+  continueGame: () => set((state) => state.game ? { screen: 'game', solStartedAt: Date.now(), novaLine: `Great to see you again, commander! We are on sol ${state.game.sol}. Check your reserves and I will help with the next step.`, novaSpeechVersion: state.novaSpeechVersion + 1, novaSpeechVisible: true } : {}),
   restartGame: () => {
     const game = createInitialGame(get().selectedScenarioId)
     const solStartedAt = Date.now()
     persistGame(game)
-    set({ game, solStartedAt, screen: 'game', savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: 'La nueva misión está lista. ¡Vamos a cuidar la base!' })
+    set({ game, solStartedAt, screen: 'game', savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: 'The new mission is ready. Let us take care of the base!' })
   },
   restoreGame: () => {
     try {
@@ -170,7 +170,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const game = get().game
     if (!game) return null
     const preview = previewDecision(game, command)
-    if (!preview.allowed) set({ errorMessage: preview.reason ?? 'No se puede realizar esta acción.' })
+    if (!preview.allowed) set({ errorMessage: preview.reason ?? 'This action is not possible.' })
     else set({ previewCommand: command, errorMessage: null })
     return preview
   },
@@ -186,7 +186,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!game) return false
     const result = dispatchGameCommand(game, command)
     if (!result.ok) {
-      set({ errorMessage: result.reason ?? 'No se pudo realizar la acción.' })
+      set({ errorMessage: result.reason ?? 'The action could not be completed.' })
       return false
     }
     persistGame(result.state)
