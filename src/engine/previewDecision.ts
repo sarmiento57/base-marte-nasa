@@ -1,5 +1,5 @@
 import { dispatchGameCommand } from './actions'
-import { GREENHOUSE_MODE } from './config'
+import { GAME_CONFIG, GREENHOUSE_MODE } from './config'
 import type { DecisionPreview, GameCommand, GameState, ResourceName, ResourceDeltas } from './types'
 
 function deltasBetween(before: GameState, after: GameState): ResourceDeltas {
@@ -25,6 +25,8 @@ function futureEffects(state: GameState, command: GameCommand): string[] {
       const mode = GREENHOUSE_MODE[command.mode]
       return [`Al avanzar, el modo ${command.mode === 'saving' ? 'ahorro' : command.mode === 'off' ? 'apagado' : 'normal'} usa ${mode.energy} energía y ${mode.water} agua para hasta ${mode.growth} de crecimiento, si el soporte vital deja reservas suficientes.`]
     }
+    case 'accelerateCrop':
+      return [`El impulso consume ${GAME_CONFIG.cropBoost.energy} energía y adelanta hasta ${GAME_CONFIG.cropBoost.growth} puntos ahora. El crecimiento normal del sol se calcula al cerrarlo si quedan energía y agua.`]
     case 'resolveDust':
       return command.choice === 'saving'
         ? ['En los soles restantes de la tormenta, la energía solar baja; el cultivo ahorra recursos y crece más despacio.']
@@ -32,9 +34,15 @@ function futureEffects(state: GameState, command: GameCommand): string[] {
     case 'resolveSolar':
       return command.choice === 'shelter'
         ? ['La tripulación queda protegida este sol; el cultivo puede continuar si conserva recursos suficientes.']
-        : ['El índice educativo de exposición queda en 60; si llega a 50 o más, no se puede ganar.']
+        : ['El nivel de exposición queda en 60; si llega a 50 o más, no se puede ganar.']
+    case 'missSolarDeadline':
+      return ['La ventana terminó sin refugio; el nivel de exposición sube 60 puntos.']
     case 'advance':
-      return ['El siguiente estado depende de los recursos disponibles, del cultivo y de las alertas.']
+      return [`Avanzar antes de tiempo gasta ${GAME_CONFIG.fastForwardEnergyCost} de energía además del soporte vital y el cultivo de este sol.`, 'El siguiente estado depende de las reservas y de las alertas.']
+    case 'advanceTimed':
+      return ['Al terminar los seis minutos, el sol se cierra sin costo de adelanto y aplica soporte vital, producción y crecimiento.']
+    case 'collectSupply':
+      return ['La tripulación recogerá el contenido disponible y ocupará su tarea de este sol.']
   }
 }
 
@@ -46,6 +54,6 @@ export function previewDecision(state: GameState, command: GameCommand): Decisio
     immediateDeltas: result.ok ? deltasBetween(state, result.state) : {},
     conditionalEffects: futureEffects(state, command),
     affectedSols: command.type === 'resolveDust' ? [state.eventSols.dust, state.eventSols.dust + 1] : [state.sol],
-    assumptions: ['Las variaciones son reglas simplificadas del videojuego, no mediciones de NASA.', 'Los efectos futuros dependen de las decisiones y los recursos de cada sol.'],
+    assumptions: ['El cálculo toma en cuenta tus reservas y el estado actual de la colonia.', 'Los efectos futuros dependen de tus decisiones y de los recursos que queden al cerrar el sol.'],
   }
 }

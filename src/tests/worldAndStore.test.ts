@@ -7,7 +7,7 @@ import { SCENARIO_PRESETS } from '../engine/config'
 import { useGameStore } from '../store/useGameStore'
 
 describe('exploration world and one game store', () => {
-  beforeEach(() => useGameStore.setState({ game: createInitialGame(), screen: 'game', selectedPlotId: null, novaExpanded: false, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: null }))
+  beforeEach(() => useGameStore.setState({ game: createInitialGame(), solStartedAt: Date.now(), screen: 'game', selectedPlotId: null, novaLine: null, novaSpeechVisible: false, novaExpanded: false, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: null }))
   afterEach(() => vi.unstubAllGlobals())
 
   it('defines a large explorable surface with construction plots, obstacles and landmarks', () => {
@@ -34,6 +34,48 @@ describe('exploration world and one game store', () => {
     useGameStore.getState().setNovaExpanded(false)
     expect(useGameStore.getState().novaExpanded).toBe(false)
     expect('resources' in useGameStore.getState()).toBe(false)
+  })
+
+  it('repeats the most recent NOVA line when the companion is tapped', () => {
+    useGameStore.getState().setNovaLine('¡Hola! Primero revisa la energía disponible.')
+    const spokenVersion = useGameStore.getState().novaSpeechVersion
+    useGameStore.getState().hideNovaSpeech()
+    useGameStore.getState().repeatNovaLine()
+    expect(useGameStore.getState()).toMatchObject({
+      novaLine: '¡Hola! Primero revisa la energía disponible.',
+      novaSpeechVisible: true,
+      novaSpeechVersion: spokenVersion + 1,
+    })
+  })
+
+  it('keeps the astronaut at the construction site until the sol closes', () => {
+    const initial = createInitialGame()
+    const plot = marsPlots.find((item) => item.id === 'B1')!
+    useGameStore.setState({ game: { ...initial, mapPosition: { x: plot.x, y: plot.y } } })
+    expect(useGameStore.getState().dispatch({ type: 'build', building: 'greenhouse', plotId: 'B1' })).toBe(true)
+    const workPosition = useGameStore.getState().game?.mapPosition
+    useGameStore.getState().moveAstronaut('right')
+    useGameStore.getState().setAstronautPosition(plot.x + 500, plot.y)
+    expect(useGameStore.getState().game?.mapPosition).toEqual(workPosition)
+  })
+
+  it('keeps the astronaut sheltered at the habitat until the sol closes', () => {
+    const initial = createInitialGame()
+    const habitat = marsPlots.find((plot) => plot.id === 'A1')!
+    useGameStore.setState({ game: { ...initial, sol: 6, mapPosition: { x: habitat.x, y: habitat.y }, events: [{ id: 'solar-sol-6', kind: 'solar', sol: 6, resolved: false }] } })
+    expect(useGameStore.getState().dispatch({ type: 'resolveSolar', choice: 'shelter' })).toBe(true)
+    useGameStore.getState().moveAstronaut('right')
+    useGameStore.getState().setAstronautPosition(habitat.x + 500, habitat.y)
+    expect(useGameStore.getState().game?.mapPosition).toEqual({ x: habitat.x, y: habitat.y })
+    expect(useGameStore.getState().game?.crewTask).toBe('shelter')
+  })
+
+  it('announces and logs a missed solar shelter deadline', () => {
+    const initial = createInitialGame()
+    useGameStore.setState({ game: { ...initial, sol: 6, events: [{ id: 'solar-sol-6', kind: 'solar', sol: 6, resolved: false }] } })
+    expect(useGameStore.getState().dispatch({ type: 'missSolarDeadline' })).toBe(true)
+    expect(useGameStore.getState().game?.log.at(-1)?.action).toBe('No llegar a tiempo al refugio solar')
+    expect(useGameStore.getState().novaLine).toContain('subió 60 puntos')
   })
 
   it('uses deterministic scenario presets for initial energy and event sols', () => {

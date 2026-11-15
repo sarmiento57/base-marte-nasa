@@ -1,4 +1,4 @@
-import { Construction, Leaf, Radio, ShieldAlert } from 'lucide-react'
+import { Construction, Leaf, Radio, ShieldAlert, Timer } from 'lucide-react'
 import { BUILDING_EFFECT, BUILDING_LIMIT, BUILDING_COST } from '../../engine/config'
 import { isWithinInteractionRange } from '../../data/mars/movement'
 import { marsPlots } from '../../data/mars/plots'
@@ -18,7 +18,8 @@ export function BuildingPreview({ game, selectedPlotId, playerPosition, onBuild 
   ]
   return <section aria-labelledby="construction-title" className="rounded-[1.5rem] border-2 border-white bg-[#fff5e2] p-4 shadow-[0_8px_20px_#513a5a20] sm:p-5">
     <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#94645d]">Taller de la colonia</p><h2 id="construction-title" className="mt-1 text-lg font-black text-[#332f52]">Construir</h2></div><span className="grid size-10 place-items-center rounded-2xl bg-[#f4dfb8] text-[#78504c]"><Construction size={19}/></span></div>
-    <p className="mt-2 rounded-xl bg-[#f2e2cc] px-3 py-2 text-xs font-semibold leading-5 text-[#655560]">{!selectedPlot ? 'Camina hasta una parcela libre y tócala para elegir dónde construir.' : !plotAvailable ? `${selectedLocation?.label ?? selectedPlot} no está libre para construir.` : !nearSelectedPlot ? `La parcela ${selectedPlot} queda lejos. Camina hasta acercarte para construir.` : `Estás junto a ${selectedPlot}. Elige qué quieres construir.`} Cada obra ocupa a la tripulación por este sol.</p>
+    <p className="mt-2 rounded-xl bg-[#f2e2cc] px-3 py-2 text-xs font-semibold leading-5 text-[#655560]">{!selectedPlot ? 'Camina hasta una parcela libre y tócala para elegir dónde construir.' : !plotAvailable ? `${selectedLocation?.label ?? selectedPlot} no está libre para construir.` : !nearSelectedPlot ? `La parcela ${selectedPlot} queda lejos. Camina hasta acercarte para construir.` : `Estás junto a ${selectedPlot}. Elige qué quieres construir.`}</p>
+    <p className="mt-2 flex items-start gap-2 rounded-xl border border-[#e5c887] bg-[#fff0c9] px-3 py-2 text-[10px] font-bold leading-4 text-[#72532c]"><Timer size={15} className="mt-0.5 shrink-0"/><span>Duración: el resto de este sol. La obra queda señalada en el mapa; la tripulación se libera al pulsar «Avanzar al sol».</span></p>
     <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
       {options.map(({ type, name, description, icon: Icon, owned }) => {
         const exhausted = owned >= BUILDING_LIMIT[type]

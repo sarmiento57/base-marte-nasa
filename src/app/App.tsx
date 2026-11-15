@@ -17,6 +17,8 @@ export default function App() {
   const restoreGame = useGameStore((state) => state.restoreGame)
   useEffect(() => { restoreGame() }, [restoreGame])
 
+  if (screen === 'game') return <GameScreen />
+
   const navigate = (target: 'home' | 'howto' | 'game' | 'science' | 'report') => {
     if (target === 'report' && !game?.gameOver) return
     if (target === 'game' && !game) return setScreen('home')
@@ -38,11 +40,9 @@ export default function App() {
     <main id="contenido" className="mx-auto max-w-[1560px] px-0 pb-8 pt-3 sm:px-3 sm:pt-5">
       {screen === 'home' && <HomeScreen/>}
       {screen === 'howto' && <HowToScreen/>}
-      {screen === 'game' && <GameScreen/>}
       {screen === 'science' && <div className="space-y-4 px-3 sm:px-3"><ScienceSources/><button type="button" onClick={() => navigate(game ? 'game' : 'home')} className="min-h-11 rounded-xl border-2 border-white bg-white/70 px-5 text-xs font-black text-[#4e4053] hover:bg-white focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#493550]">Volver a {game ? 'la misión' : 'campamento'}</button></div>}
       {screen === 'report' && game?.gameOver && <MissionReportScreen game={game}/>}
     </main>
-    <footer className="mx-auto max-w-[1560px] px-4 pb-6 text-center text-[9px] font-semibold text-[#796a6d] sm:text-[10px]">Los recursos, el crecimiento y los eventos del juego son simplificaciones educativas; las observaciones científicas reales aparecen atribuidas en el laboratorio.</footer>
     <NovaAssistant/>
   </div>
 }

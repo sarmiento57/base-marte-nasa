@@ -7,7 +7,23 @@ const resourceCards: { key: ResourceName; label: string; icon: typeof Zap; color
   { key: 'food', label: 'Comida', icon: Leaf, color: 'text-emerald-300', accent: 'accent-emerald-400', cap: 100 },
 ]
 
-export function ResourceStatus({ game }: { game: GameState }) {
+export function ResourceStatus({ game, immersive = false }: { game: GameState; immersive?: boolean }) {
+  if (immersive) {
+    return <section aria-label="Reservas de la colonia" className="flex h-[58px] items-center gap-1.5 rounded-[1.2rem] border border-white/45 bg-[#302b48]/90 px-2.5 shadow-[0_10px_32px_#20172d66] backdrop-blur-md">
+      {resourceCards.map(({ key, label, icon: Icon, color, cap = 100 }) => {
+        const value = game.resources[key]
+        const danger = (key === 'energy' && value < 20) || (key === 'water' && value < 10) || (key === 'food' && value < 10)
+        return <article key={key} className={`flex h-11 w-[136px] shrink-0 items-center gap-2 rounded-xl border px-2.5 ${danger ? 'border-[#ff9c79]/70 bg-[#793e48]/85' : 'border-white/10 bg-white/[.07]'}`}>
+          <Icon size={18} className={color} aria-hidden="true"/>
+          <div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-1"><span className="text-[9px] font-extrabold text-white/75">{label}</span><strong className={`text-sm font-black tabular-nums ${danger ? 'text-[#ffc0a5]' : 'text-white'}`}>{value}<span className="text-[9px] text-white/55">/{cap}</span></strong></div><progress aria-label={`${label}: ${value} de ${cap}`} max={cap} value={value} className={`mt-1 h-1.5 w-full overflow-hidden rounded-full ${danger ? 'accent-[#ff906f]' : key === 'energy' ? 'accent-amber-400' : key === 'water' ? 'accent-sky-400' : 'accent-emerald-400'}`}/></div>
+        </article>
+      })}
+      <article className="flex h-11 w-[154px] shrink-0 items-center justify-around rounded-xl border border-white/10 bg-white/[.07] px-2">
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-white"><Package size={14} className="text-[#f0ba8d]" aria-hidden="true"/>{game.resources.spareParts}<span className="font-semibold text-white/55">repuestos</span></span>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-white"><Sprout size={14} className="text-[#9fdf91]" aria-hidden="true"/>{game.resources.seeds}<span className="font-semibold text-white/55">semillas</span></span>
+      </article>
+    </section>
+  }
   return <section aria-label="Reservas de la colonia" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
     {resourceCards.map(({ key, label, icon: Icon, color, accent, cap = 100 }) => {
       const value = game.resources[key]

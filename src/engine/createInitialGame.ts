@@ -24,5 +24,7 @@ export function createInitialGame(scenarioId: ScenarioId = 'standard'): GameStat
     foodHarvested: 0,
     shelterUsed: false,
     mapPosition: { x: 980, y: 820 },
+    cropBoostedSol: 0,
+    collectedSupplyIds: [],
   }
 }

@@ -1,1 +1,138 @@
 @import "tailwindcss";
+
+@keyframes nova-hover {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.nova-float {
+  animation: nova-hover 2.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes astronaut-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+
+@keyframes astronaut-step {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  28% { transform: translateY(-5px) rotate(-2deg); }
+  62% { transform: translateY(1px) rotate(2deg); }
+}
+
+@keyframes astronaut-swing-left {
+  0%, 100% { transform: rotate(10deg); }
+  50% { transform: rotate(-16deg); }
+}
+
+@keyframes astronaut-swing-right {
+  0%, 100% { transform: rotate(-16deg); }
+  50% { transform: rotate(10deg); }
+}
+
+@keyframes astronaut-work {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  45% { transform: translateY(-3px) rotate(-1deg); }
+}
+
+@keyframes construction-pulse {
+  0%, 100% { opacity: .68; stroke-dashoffset: 0; }
+  50% { opacity: 1; stroke-dashoffset: 32; }
+}
+
+@keyframes construction-sparkle {
+  0%, 100% { transform: scale(.72); opacity: .35; }
+  48% { transform: scale(1.35); opacity: 1; }
+}
+
+@keyframes visitor-hover {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes alien-glimmer {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
+
+@keyframes dust-drift {
+  0%, 100% { transform: translate(0, 0) rotate(-4deg); opacity: .12; }
+  50% { transform: translate(28px, -8px) rotate(5deg); opacity: .28; }
+}
+
+@keyframes solar-alert-vignette {
+  0%, 100% { opacity: .14; }
+  50% { opacity: .35; }
+}
+
+@keyframes solar-alert-border {
+  0%, 100% { box-shadow: 0 14px 50px #201b35bb, 0 0 0 0 #ffb35a55; }
+  50% { box-shadow: 0 14px 50px #201b35bb, 0 0 0 6px #ffb35a33; }
+}
+
+@keyframes solar-alert-light {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+}
+
+.solar-alert-vignette {
+  background: radial-gradient(ellipse at 50% 12%, transparent 25%, #f18b533b 100%);
+  animation: solar-alert-vignette 2.2s ease-in-out infinite;
+}
+
+.solar-alert-glow { animation: solar-alert-border 1.8s ease-in-out infinite; }
+.solar-alert-beacon { animation: solar-alert-light .9s ease-in-out infinite; }
+
+.astronaut-body {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.astronaut-idle { animation: astronaut-breathe 2.4s ease-in-out infinite; }
+.astronaut-walking { animation: astronaut-step .34s ease-in-out infinite; }
+.astronaut-working { animation: astronaut-work .8s ease-in-out infinite; }
+.astronaut-leg,
+.astronaut-arm {
+  transform-box: fill-box;
+  transform-origin: center 18%;
+}
+.astronaut-walking .astronaut-leg-left,
+.astronaut-walking .astronaut-arm-right { animation: astronaut-swing-left .34s ease-in-out infinite; }
+.astronaut-walking .astronaut-leg-right,
+.astronaut-walking .astronaut-arm-left { animation: astronaut-swing-right .34s ease-in-out infinite; }
+.astronaut-working .astronaut-arm { animation: astronaut-swing-left .7s ease-in-out infinite; }
+.astronaut-task-tag { animation: astronaut-breathe 1.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.astronaut-shadow-walk { animation: astronaut-breathe .34s ease-in-out infinite alternate; }
+.construction-frame { animation: construction-pulse 1.8s linear infinite; }
+.construction-glow { animation: nova-hover 2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.construction-spark { animation: construction-sparkle .9s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.construction-spark-delay { animation-delay: .45s; }
+.crew-visitor-bob { animation: visitor-hover 3.1s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.alien-sighting { animation: alien-glimmer .65s ease-in-out 4 alternate; }
+.alien-flight-trail { animation: alien-glimmer .45s ease-in-out infinite alternate; }
+.dust-devil { animation: dust-drift 8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.ship-astronaut-idle { animation: astronaut-breathe 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+.ship-nova-float { animation: nova-hover 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nova-float,
+  .astronaut-body,
+  .astronaut-leg,
+  .astronaut-arm,
+  .astronaut-task-tag,
+  .astronaut-shadow-walk,
+  .construction-frame,
+  .construction-glow,
+  .construction-spark,
+  .crew-visitor-bob,
+  .alien-sighting,
+  .alien-flight-trail,
+  .dust-devil,
+  .ship-astronaut-idle,
+  .ship-nova-float { animation: none; }
+  .solar-alert-vignette,
+  .solar-alert-glow,
+  .solar-alert-beacon { animation: none; }
+}
