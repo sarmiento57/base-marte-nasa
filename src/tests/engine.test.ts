@@ -128,7 +128,7 @@ describe('closed simulation rules', () => {
     const missed = dispatchGameCommand(state, { type: 'missSolarDeadline' })
     expect(missed.ok).toBe(true)
     expect(missed.state).toMatchObject({ educationalRisk: 60, events: [{ resolved: true, optionId: 'continue' }] })
-    expect(missed.state.log.at(-1)?.action).toMatch(/no llegar/i)
+    expect(missed.state.log.at(-1)?.action).toMatch(/did not reach/i)
     expect(dispatchGameCommand(missed.state, { type: 'missSolarDeadline' }).ok).toBe(false)
   })
 
@@ -137,7 +137,7 @@ describe('closed simulation rules', () => {
     const result = dispatchGameCommand(state, { type: 'advanceTimed' })
     expect(result.ok).toBe(true)
     expect(result.state).toMatchObject({ sol: 2, resources: { energy: 56, water: 58, food: 19 } })
-    expect(result.state.log.some((entry) => entry.action === 'Avanzar un sol antes de tiempo')).toBe(false)
+    expect(result.state.log.some((entry) => entry.action === 'Advance a sol early')).toBe(false)
   })
 
   it('charges energy when manually advancing before the six-minute Sol ends', () => {
@@ -145,7 +145,7 @@ describe('closed simulation rules', () => {
     const result = dispatchGameCommand(state, { type: 'advance' })
     expect(result.ok).toBe(true)
     expect(result.state).toMatchObject({ sol: 2, resources: { energy: 46 } })
-    expect(result.state.log.some((entry) => entry.action === 'Avanzar un sol antes de tiempo' && entry.resourceDeltas.energy === -10)).toBe(true)
+    expect(result.state.log.some((entry) => entry.action === 'Advance a sol early' && entry.resourceDeltas.energy === -10)).toBe(true)
   })
 
   it('keeps manual advancing unavailable when its energy fee cannot be paid', () => {
@@ -153,7 +153,7 @@ describe('closed simulation rules', () => {
     const result = dispatchGameCommand(state, { type: 'advance' })
     expect(result.ok).toBe(false)
     expect(result.state).toBe(state)
-    expect(result.reason).toMatch(/10.*energía/i)
+    expect(result.reason).toMatch(/10.*energy/i)
   })
 
   it('collects nearby expedition supplies once and records the crew task', () => {

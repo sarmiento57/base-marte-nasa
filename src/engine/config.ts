@@ -1,6 +1,6 @@
 import type { BuildingType, GreenhouseMode, ResourceName, ScenarioId } from './types'
 
-export const BALANCE_NOTE = 'Parámetros de reserva y progresión de la colonia.'
+export const BALANCE_NOTE = 'Colony reserve and progression parameters.'
 
 export const RESOURCE_CAPACITY: Partial<Record<ResourceName, number>> = {
   energy: 100,
@@ -27,8 +27,8 @@ export const BUILDING_COST: Record<'solar' | 'greenhouse', Partial<Record<Resour
 }
 
 export const BUILDING_EFFECT: Record<'solar' | 'greenhouse', string> = {
-  solar: '+6 energía por sol; +2 durante la tormenta.',
-  greenhouse: 'Habilita la siembra en un próximo sol.',
+  solar: '+6 energy per sol; +2 during the storm.',
+  greenhouse: 'Lets you plant on a later sol.',
 }
 
 export const BUILDING_LIMIT: Record<'solar' | 'greenhouse', number> = { solar: 2, greenhouse: 1 }
@@ -70,25 +70,25 @@ export const GAME_CONFIG = {
 } as const
 
 export const BUILDING_LABEL: Record<BuildingType, string> = {
-  habitat: 'Hábitat',
-  solar: 'Panel solar',
-  greenhouse: 'Invernadero',
+  habitat: 'Habitat',
+  solar: 'Solar panel',
+  greenhouse: 'Greenhouse',
 }
 
 export const RESOURCE_LABEL: Record<ResourceName, string> = {
-  energy: 'Energía',
-  water: 'Agua',
-  food: 'Comida',
-  spareParts: 'Repuestos',
-  seeds: 'Semillas',
+  energy: 'Energy',
+  water: 'Water',
+  food: 'Food',
+  spareParts: 'Spare parts',
+  seeds: 'Seeds',
 }
 
 export const EVENT_SOL = { dust: 3, solar: 6 } as const
 
 export const SCENARIO_PRESETS: Record<ScenarioId, { name: string; initialEnergy: number; dustSol: number; solarSol: number; description: string }> = {
-  standard: { name: 'Primer vuelo', initialEnergy: 48, dustSol: 3, solarSol: 6, description: 'La misión equilibrada: tormenta en el sol 3 y alerta solar en el sol 6.' },
-  'reserve-rich': { name: 'Reserva reforzada', initialEnergy: 56, dustSol: 4, solarSol: 7, description: 'Empiezas con más energía y las señales llegan más tarde.' },
-  'early-events': { name: 'Señales tempranas', initialEnergy: 48, dustSol: 2, solarSol: 5, description: 'Las mismas reservas con eventos que llegan antes.' },
+  standard: { name: 'First flight', initialEnergy: 48, dustSol: 3, solarSol: 6, description: 'The balanced mission: dust storm on sol 3 and solar alert on sol 6.' },
+  'reserve-rich': { name: 'Extra reserves', initialEnergy: 56, dustSol: 4, solarSol: 7, description: 'You start with more energy and the events come later.' },
+  'early-events': { name: 'Early signals', initialEnergy: 48, dustSol: 2, solarSol: 5, description: 'The same reserves, but events arrive sooner.' },
 }
 
 export function eventSolsForScenario(scenarioId: ScenarioId): { dust: number; solar: number } {

@@ -19,7 +19,7 @@ describe('free-roam movement', () => {
     const result = dispatchGameCommand(game, { type: 'build', building: 'greenhouse', plotId: 'B1' })
 
     expect(result.ok).toBe(false)
-    expect(result.reason).toContain('Camina hasta la parcela')
+    expect(result.reason).toContain('Walk to the selected plot')
     expect(result.state.resources.spareParts).toBe(4)
     expect(result.state.buildings).toHaveLength(game.buildings.length)
   })
@@ -32,9 +32,9 @@ describe('free-roam movement', () => {
     const harvest = dispatchGameCommand({ ...farGame, crop: { ...farGame.crop, active: true, growth: 100 } }, { type: 'harvest' })
 
     expect(sow.ok).toBe(false)
-    expect(sow.reason).toContain('Camina hasta el invernadero')
+    expect(sow.reason).toContain('Walk to the greenhouse')
     expect(harvest.ok).toBe(false)
-    expect(harvest.reason).toContain('Camina hasta el invernadero')
+    expect(harvest.reason).toContain('Walk to the greenhouse')
     expect(sow.state.resources).toEqual(farGame.resources)
   })
 })

@@ -37,12 +37,12 @@ describe('exploration world and one game store', () => {
   })
 
   it('repeats the most recent NOVA line when the companion is tapped', () => {
-    useGameStore.getState().setNovaLine('¡Hola! Primero revisa la energía disponible.')
+    useGameStore.getState().setNovaLine('Hi! First check the available energy.')
     const spokenVersion = useGameStore.getState().novaSpeechVersion
     useGameStore.getState().hideNovaSpeech()
     useGameStore.getState().repeatNovaLine()
     expect(useGameStore.getState()).toMatchObject({
-      novaLine: '¡Hola! Primero revisa la energía disponible.',
+      novaLine: 'Hi! First check the available energy.',
       novaSpeechVisible: true,
       novaSpeechVersion: spokenVersion + 1,
     })
@@ -74,8 +74,8 @@ describe('exploration world and one game store', () => {
     const initial = createInitialGame()
     useGameStore.setState({ game: { ...initial, sol: 6, events: [{ id: 'solar-sol-6', kind: 'solar', sol: 6, resolved: false }] } })
     expect(useGameStore.getState().dispatch({ type: 'missSolarDeadline' })).toBe(true)
-    expect(useGameStore.getState().game?.log.at(-1)?.action).toBe('No llegar a tiempo al refugio solar')
-    expect(useGameStore.getState().novaLine).toContain('subió 60 puntos')
+    expect(useGameStore.getState().game?.log.at(-1)?.action).toBe('Did not reach the solar shelter in time')
+    expect(useGameStore.getState().novaLine).toContain('rose 60 points')
   })
 
   it('uses deterministic scenario presets for initial energy and event sols', () => {

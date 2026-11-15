@@ -14,7 +14,7 @@ export function createInitialGame(scenarioId: ScenarioId = 'standard'): GameStat
     crop: { active: false, growth: 0, health: GAME_CONFIG.cropInitialHealth, mode: 'normal', consecutiveOffSols: 0, harvested: false },
     crewBusy: false,
     lifeSupport: 'stable',
-    lifeSupportReason: 'Los sistemas básicos tienen reservas suficientes.',
+    lifeSupportReason: 'Basic systems have enough reserves.',
     educationalRisk: 0,
     events: [],
     log: [],

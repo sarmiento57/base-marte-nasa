@@ -19,20 +19,20 @@ export function SolarShelterAlert({ sol, secondsRemaining, atShip, canEnter, onG
     <div className="flex items-start gap-3">
       <span aria-hidden="true" className="solar-alert-beacon grid size-11 shrink-0 place-items-center rounded-xl bg-[#d25d45] text-[#fff0b4]"><ShieldAlert size={22}/></span>
       <div className="min-w-0 flex-1">
-        <p className="text-[9px] font-black uppercase tracking-[.16em] text-[#ffd491]">Alerta de misión · Sol {String(sol).padStart(2, '0')}</p>
-        <h2 id="solar-shelter-title" className="mt-0.5 text-base font-black sm:text-lg">¡Actividad solar intensa! Refúgiate en la nave</h2>
-        <p className="mt-1 text-[10px] font-semibold leading-4 text-white/75">NOVA recomienda entrar en la nave antes de que termine la cuenta atrás.</p>
+        <p className="text-[9px] font-black uppercase tracking-[.16em] text-[#ffd491]">Mission alert · Sol {String(sol).padStart(2, '0')}</p>
+        <h2 id="solar-shelter-title" className="mt-0.5 text-base font-black sm:text-lg">Strong solar activity! Take shelter in the ship</h2>
+        <p className="mt-1 text-[10px] font-semibold leading-4 text-white/75">NOVA recommends entering the ship before the countdown ends.</p>
       </div>
       <div className="grid shrink-0 justify-items-end gap-1 rounded-xl border border-[#ffdcaa]/35 bg-black/20 px-2.5 py-1.5">
-        <span className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wide text-[#ffe3b2]"><Timer size={12}/> Tiempo</span>
-        <output aria-label={`${minutes} minutos y ${seconds} segundos para llegar al refugio`} aria-live="off" className="font-mono text-lg font-black tabular-nums text-white">{minutes}:{seconds}</output>
+        <span className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wide text-[#ffe3b2]"><Timer size={12}/> Time</span>
+        <output aria-label={`${minutes} minutes and ${seconds} seconds to reach the shelter`} aria-live="off" className="font-mono text-lg font-black tabular-nums text-white">{minutes}:{seconds}</output>
       </div>
     </div>
-    <progress aria-label="Tiempo para llegar a la nave" max={GAME_CONFIG.solarShelterWindowSeconds} value={secondsRemaining} className="mt-3 h-2 w-full overflow-hidden rounded-full accent-[#ffd071]"/>
+    <progress aria-label="Time to reach the ship" max={GAME_CONFIG.solarShelterWindowSeconds} value={secondsRemaining} className="mt-3 h-2 w-full overflow-hidden rounded-full accent-[#ffd071]"/>
     <div className="mt-2 flex items-center justify-between gap-3">
-      <a href="https://ccmc.gsfc.nasa.gov/tools/DONKI/" target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1.5 text-[9px] font-bold text-[#d8e8ff] underline decoration-white/35 underline-offset-2 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">DONKI · llamarada X1.2 histórica · 3 ene 2025 <ExternalLink size={11}/></a>
-      <button type="button" disabled={atShip && !canEnter} onClick={atShip ? onEnterShip : onGoToShip} className="flex min-h-10 shrink-0 items-center gap-2 rounded-xl border-2 border-white/70 bg-[#e67a50] px-4 text-[11px] font-black text-white shadow-lg hover:bg-[#f39462] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:border-white/20 disabled:bg-white/15 disabled:text-white/60">{atShip ? 'Entrar en la nave' : 'Ir a la nave'} <span aria-hidden="true">→</span></button>
+      <a href="https://ccmc.gsfc.nasa.gov/tools/DONKI/" target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1.5 text-[9px] font-bold text-[#d8e8ff] underline decoration-white/35 underline-offset-2 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">DONKI · historical X1.2 flare · Jan 3, 2025 <ExternalLink size={11}/></a>
+      <button type="button" disabled={atShip && !canEnter} onClick={atShip ? onEnterShip : onGoToShip} className="flex min-h-10 shrink-0 items-center gap-2 rounded-xl border-2 border-white/70 bg-[#e67a50] px-4 text-[11px] font-black text-white shadow-lg hover:bg-[#f39462] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:border-white/20 disabled:bg-white/15 disabled:text-white/60">{atShip ? 'Enter the ship' : 'Go to the ship'} <span aria-hidden="true">→</span></button>
     </div>
-    {atShip && !canEnter && <p className="mt-2 text-right text-[10px] font-extrabold text-[#ffd391]">Necesitas 6 ⚡ y tener libre a la tripulación para cerrar la compuerta.</p>}
+    {atShip && !canEnter && <p className="mt-2 text-right text-[10px] font-extrabold text-[#ffd391]">You need 6 ⚡ and a free crew to close the hatch.</p>}
   </section>, document.getElementById('game-screen-root') ?? document.body)
 }
