@@ -2,7 +2,7 @@
 
 > **Versión 3.0 · 14 de noviembre de 2026.** Proyecto del NASA Space Apps Challenge 2026, reto **Build a Junior Astronaut Mission Trainer**. Este documento es una instrucción de trabajo para un agente de IA; no es evidencia de que el videojuego ya esté desarrollado.
 >
-> Esta versión está **sincronizada con `NASA_Documento_Maestro_v3.docx`**. Sustituye a `NASA_AGENTE_IA_v2.md` y al archivo Maestro anterior. En caso de divergencia, detener la implementación, registrar el conflicto y pedir al responsable de integración que actualice **ambos documentos**, sin escoger valores por cuenta propia.
+> Esta versión está **sincronizada con `NASA_Documento_Maestro_v3.docx`**. Sustituye a `NASA_AGENTE_IA_v2.md` y al archivo Maestro anterior. Las decisiones de equipo vigentes constan en §16; ante otra divergencia no resuelta, detener solo la parte afectada y pedir una decisión antes de implementarla.
 
 ## 0. Prioridad de fuentes y trabajo
 
@@ -16,17 +16,19 @@
 
 ## 1. Meta verificable del MVP
 
-El usuario entra sin cuenta; inicia una misión de 8 soles; ve un mapa de Marte; construye un invernadero (y, si quiere, un segundo panel); asigna al astronauta una tarea por sol; siembra; avanza soles; enfrenta una tormenta de polvo y una alerta de actividad solar; toma decisiones con efectos visibles sobre recursos y crecimiento; cosecha; concluye en victoria o derrota; recibe un **informe final causal** con vínculo al evento histórico DONKI. **NOVA**, un robot visible durante todo el juego, acompaña la introducción, avisa los riesgos, explica el costo de cada elección y celebra los logros. Antes de confirmar decisiones se presenta una vista previa de consecuencias. Los objetivos de la misión están siempre disponibles; las insignias animadas son P1.
+El usuario entra sin cuenta; inicia una misión de 8 soles; recorre a pie un valle marciano 2D amplio con cámara cenital; construye un invernadero (y, si quiere, un segundo panel); asigna al astronauta una tarea por sol; siembra; avanza soles; enfrenta una tormenta de polvo y una alerta de actividad solar; toma decisiones con efectos visibles sobre recursos y crecimiento; cosecha; concluye en victoria o derrota; recibe un **informe final causal** con vínculo al evento histórico DONKI. **NOVA**, un robot visible durante todo el juego, acompaña la introducción, avisa los riesgos, explica el costo de cada elección y celebra los logros. Antes de confirmar decisiones se presenta una vista previa de consecuencias. Los objetivos de la misión están siempre disponibles; las insignias son P1.
+
+El recorrido libre es una capa de juego acordada por el equipo: el jugador mueve al astronauta; para construir, sembrar o cosechar debe acercarse a la parcela o al invernadero. Caminar no consume recursos ni avanza el sol. La referencia de mundo abierto se limita a la vista cenital y la exploración, conservando el contenido educativo infantil de Base Marte.
 
 Deben existir al menos **dos rutas ganadoras distintas y dos rutas perdedoras distintas**, reproducibles con estado determinista (sección 10). La demo debe funcionar **sin consultar NASA durante la partida**.
 
 ## 2. Stack obligatorio para el MVP
 
 - React + TypeScript + Vite; estilos con Tailwind CSS.
-- **Mapa en SVG/DOM clicable para todo el P0.** Con 6–12 parcelas y texto obligatorio en HTML accesible, no hace falta un motor de juego. Phaser pasa a P1, junto con BM-23 (animación), y solo se integra si el P0 está terminado y probado.
+- **Mapa de exploración 2D en SVG/DOM.** El mundo mide 4,800 × 3,200 unidades, la cámara sigue al astronauta y se puede caminar con WASD/flechas, pad táctil mantenido o clic/tap para caminar al punto. Conserva 6–12 parcelas de construcción, con lista en HTML accesible. Construir exige estar a 180 unidades de la parcela; sembrar y cosechar exigen estar a 180 unidades del invernadero. Caminar no consume recursos ni tiempo de misión. No hace falta Phaser para esta vista cenital.
 - Zustand para almacenar/derivar estado; motor puro en TypeScript sin efectos DOM.
 - Vitest para tests del motor; Playwright opcional. La prueba E2E manual es imprescindible.
-- Datos archivados en `src/data/nasa/`. `LocalStorage` únicamente para guardado opcional (P1). SIN login, backend, base SQL, SSR, multijugador ni 3D.
+- Datos archivados en `src/data/nasa/`. Guardado local opcional, versionado y validado (BM-22). SIN login, backend, base SQL, SSR, multijugador ni 3D.
 - `npm run build` debe producir `dist/` lista para hosting estático. Comprobar `npm run preview`.
 
 ## 3. Estructura sugerida (adaptar solo con justificación)
@@ -95,16 +97,18 @@ interface Resources { energy:number; water:number; food:number; spareParts:numbe
 interface Crop { active:boolean; growth:number; health:number; mode:GreenhouseMode; consecutiveOffSols:number; harvested:boolean; }
 interface Building { id:string; type:BuildingType; plotId:string; operational:boolean; }
 interface GameEvent { id:string; kind:EventKind; sol:number; resolved:boolean; optionId?:string; }
-interface DecisionLog { sol:number; action:string; cost:string; consequence:string; }
+interface DecisionLog { sol:number; action:string; cost:string; consequence:string; resourceDeltas:Partial<Resources>; kind:'action'|'turn'; }
+type ScenarioId = 'standard'|'reserve-rich'|'early-events';
 interface GameState {
-  version:1; sol:number; maxSols:8;
+  version:1; scenarioId:ScenarioId; eventSols:{dust:number;solar:number}; sol:number; maxSols:8;
   resources:Resources; buildings:Building[]; crop:Crop;
   crewBusy:boolean; crewTask?:CrewTask;      // una tarea por sol
   lifeSupport:LifeSupportStatus; lifeSupportReason:string;
-  criticalStreak:number;                      // avances consecutivos en crítico
   educationalRisk:number;                     // índice educativo 0–100
   events:GameEvent[]; log:DecisionLog[];
   gameOver:boolean; won:boolean; endReason?:'win'|'noHarvest'|'crewExposed'|'lifeSupport';
+  solsCompleted:number; foodHarvested:number; shelterUsed:boolean;
+  mapPosition:{x:number;y:number};
 }
 ```
 
@@ -121,8 +125,8 @@ Añadir campos solo cuando sean necesarios para satisfacer una HU con criterio c
 | Inicio de la partida | «¡Hola, comandante! Soy NOVA. Tu misión es cultivar, cuidar la energía y proteger a la tripulación». | Normal |
 | Antes de construir | «Este edificio usa 2 repuestos. Revisá tu inventario antes de confirmar». | Normal |
 | Energía menor a 20 | «¡Atención! Queda poca energía. Revisá cuánto necesita el soporte vital para el próximo sol». | Alta |
-| Tormenta, sol 3 | «La tormenta reduce la energía solar. Ahorrar ralentiza el cultivo, pero protege tus reservas». | Alta |
-| Alerta solar, sol 6 | «La actividad solar obliga a elegir: refugiar cuesta energía; continuar aumenta el índice educativo de exposición». | Alta |
+| Tormenta, según el escenario | «La tormenta reduce la energía solar. Ahorrar ralentiza el cultivo, pero protege tus reservas». | Alta |
+| Alerta solar, según el escenario | «La actividad solar obliga a elegir: refugiar cuesta energía; continuar aumenta el índice educativo de exposición». | Alta |
 | Cosecha | «¡Primera cosecha! Ahora la colonia tiene más comida para sostener a su tripulación». | Normal |
 | Fin de partida | «Revisá el informe: muestra qué decisiones cambiaron el resultado de tu misión». | Normal |
 
@@ -143,6 +147,8 @@ Antes de **construir, sembrar, cambiar el modo, elegir una opción de tormenta, 
 
 **Pruebas BM-27:** para cada acción válida el costo previo coincide con el descuento al ejecutarla; con recursos insuficientes se bloquea y se indica por qué; un evento modifica la previsión; cerrar o cancelar es neutro; ninguna predicción afirma resultado garantizado sin considerar eventos.
 
+Las acciones físicas de construcción, siembra y cosecha también se bloquean fuera del rango de interacción; la vista previa y el mensaje explican que el astronauta debe caminar hasta el sitio.
+
 ## 5.3 Misiones, recompensas y reporte educativo
 
 - **P0, BM-02:** tres objetivos visibles: completar 8 soles, recoger cosecha y proteger a la tripulación; no añadir niveles adicionales. Los objetivos se marcan exclusivamente desde el estado.
@@ -155,8 +161,9 @@ Todo lo de esta sección vive en `engine/config.ts`. Mostrar en la interfaz la l
 
 ### 6.1 Tiempo y turno
 
-- La partida empieza en el **sol 1**. Hay **8 avances**. El avance *n* resuelve el sol *n*. Tras el avance 8 se evalúa la misión.
+- La partida empieza en el **sol 1**. Hay **8 avances**. El avance *n* resuelve el sol *n*. Se evalúa al completar el avance 8, salvo que un cierre crítico termine antes la partida.
 - En cada sol el jugador puede: resolver el evento del sol (si hay), asignar **una** tarea al astronauta y pulsar «Avanzar sol».
+- El jugador puede caminar en cualquier momento; caminar no consume recursos ni hace avanzar el sol.
 
 ### 6.2 Estado inicial
 
@@ -168,12 +175,18 @@ Todo lo de esta sección vive en `engine/config.ts`. Mostrar en la interfaz la l
 | Repuestos | 4 | — |
 | Semillas | 1 paquete | — |
 
-Edificios iniciales: hábitat y un panel solar, ya operativos. El invernadero **no** está construido. Mapa: al menos 6 parcelas, de las cuales al menos 2 libres y 1 bloqueada por un obstáculo.
+Edificios iniciales: hábitat y un panel solar, ya operativos. El invernadero **no** está construido. El mundo contiene 11 parcelas distribuidas por el valle; hay parcelas libres, edificios iniciales y terreno bloqueado. Escenarios deterministas BM-25:
+
+| Escenario | Energía inicial | Tormenta | Alerta solar |
+|---|---:|---:|---:|
+| Primer vuelo | 48 | sol 3 | sol 6 |
+| Reserva reforzada | 56 | sol 4 | sol 7 |
+| Señales tempranas | 48 | sol 2 | sol 5 |
 
 ### 6.3 Tripulación (BM-12)
 
 - Un astronauta. Estados «Libre» y «Ocupado».
-- Construir, sembrar y cosechar ocupan al astronauta **el resto del sol**. El efecto de la tarea es inmediato; el astronauta queda libre al avanzar.
+- Construir, sembrar y cosechar ocupan al astronauta **el resto del sol**. Hay que acercarse a la parcela o invernadero (180 unidades) para empezar la tarea. Caminar hacia el lugar no avanza el sol ni consume recursos; el astronauta queda libre al avanzar.
 - Consecuencia: como máximo una tarea por sol. Por eso no se puede construir el invernadero y sembrar el mismo sol.
 
 ### 6.4 Construcción (BM-08)
@@ -195,7 +208,7 @@ Máximo uno de cada uno. Los costos se muestran antes de confirmar. Los repuesto
   - **En riesgo**: todo cubierto, pero energía < 20, agua < 10 o comida < 10.
   - **Estable**: el resto.
 - `lifeSupportReason` nombra el recurso causante («Queda poca energía»).
-- Dos avances consecutivos en Crítico terminan la misión antes del sol 8.
+- Un solo cierre en estado **Crítico** termina la misión inmediatamente con causa `lifeSupport`; no hay racha de críticos.
 
 ### 6.6 Cultivo (BM-09, BM-10, BM-11)
 
@@ -211,23 +224,23 @@ Máximo uno de cada uno. Los costos se muestran antes de confirmar. Los repuesto
 
 ### 6.7 Tormenta de polvo (BM-13)
 
-- Aparece al inicio del **sol 3** y afecta la generación de los **soles 3 y 4**. Es un escenario didáctico, no un dato NASA.
+- Aparece en el sol de tormenta del escenario elegido y afecta ese sol y el siguiente. En el escenario estándar llega en el sol 3 y afecta los soles 3 y 4. Es una regla didáctica, no un dato NASA.
 - Decisión obligatoria antes de avanzar:
   - **«Modo ahorro»**: el cultivo pasa a ahorro durante los soles 3 y 4.
   - **«Continuar normal»**: el cultivo sigue en normal.
-- Al inicio del sol 5 el cultivo vuelve a normal automáticamente y se avisa: «La tormenta terminó».
+- Al sol siguiente a los dos soles de tormenta el cultivo vuelve a normal automáticamente y se avisa: «La tormenta terminó».
 
 ### 6.8 Alerta de actividad solar (BM-14)
 
-- Aparece al inicio del **sol 6**. Decisión obligatoria antes de avanzar:
-  - **«Refugiar tripulación»**: −6 energía inmediatos y el astronauta queda ocupado todo el sol 6 (no puede construir, sembrar ni cosechar ese sol).
+- Aparece al inicio del sol de alerta solar del escenario elegido (sol 6 en el escenario estándar). Decisión obligatoria antes de avanzar:
+  - **«Refugiar tripulación»**: −6 energía inmediatos y el astronauta queda ocupado todo ese sol (no puede construir, sembrar ni cosechar ese sol).
   - **«Continuar trabajando»**: sin costo de energía; el índice educativo de exposición sube **+60**.
 - Si la energía es menor que 6, «Refugiar» aparece desactivada con el motivo: «No guardaste energía para el refugio».
 - El índice se etiqueta siempre «Índice educativo»; no es una dosis ni un efecto médico.
 
 ### 6.9 Final de misión (BM-18)
 
-Victoria si, tras el avance 8, se cumplen las tres:
+Un cierre crítico termina de inmediato en derrota por soporte vital. Si no hubo cierre crítico, al terminar el avance 8 hay victoria solo si se cumplen las tres:
 
 1. Cosecha recogida.
 2. Soporte vital no crítico.
@@ -241,9 +254,9 @@ Si falla alguna, la misión termina en derrota con `endReason` y una explicació
 2. Sumar generación solar del sol (con tormenta y segundo panel si aplican), con tope de capacidad.
 3. Cobrar soporte vital demanda por demanda.
 4. Cobrar el cultivo según modo y disponibilidad; actualizar crecimiento, contador de soles apagados y salud.
-5. Recalcular estado de soporte vital y `criticalStreak`.
+5. Recalcular estado y causa del soporte vital.
 6. Registrar en `log` los cambios con su causa.
-7. Si `criticalStreak` es 2 o era el avance 8, evaluar la misión. Si no, pasar al sol siguiente, liberar al astronauta y crear el evento de ese sol.
+7. Si el soporte vital quedó Crítico, terminar inmediatamente con causa `lifeSupport`. Si era el avance 8, evaluar el resultado final. En otro caso, pasar al sol siguiente, liberar al astronauta y crear el evento de ese sol.
 
 ## 7. Orden de ejecución para un agente autónomo
 
@@ -345,7 +358,7 @@ Resultado: derrota, `lifeSupport`. En el avance 8 la comida no alcanza y no hay 
 
 - La simulación recorrió las 952 combinaciones válidas de tareas por sol y de las dos decisiones: 21 ganan, 901 terminan sin cosecha y 30 con la tripulación expuesta.
 - **No cubrió** los cambios manuales de modo fuera de la tormenta ni el modo apagado. Esos casos (salud del cultivo, cosecha reducida de 25) quedan `Pendiente de QA` hasta tener tests propios.
-- Con estos valores, el fin anticipado por dos avances críticos **no se alcanzó en ninguna combinación simulada**. Probarlo con un test de estado construido y no anunciarlo en la demo como ruta jugable.
+- El equipo eligió terminar la misión en el primer cierre crítico; `src/tests/engine.test.ts` comprueba esa derrota inmediata.
 - La simulación es un script aparte, no el motor en TypeScript. Si el motor da otros números, el error está en uno de los dos: revisar antes de tocar constantes.
 
 ## 11. Cronograma de referencia
@@ -399,6 +412,10 @@ Cada entrega del agente debe informar: **(1) HU resueltas, (2) archivos modifica
 **Como** jugador, **quiero** recibir insignias cuando cosecho y protejo la base, **para** reconocer qué aprendí.
 **Criterios:** mínimo dos insignias verificadas por hechos del estado, sin duplicación, sin cambiar recursos, visibles en pantalla de fin; se pueden omitir sin afectar el P0.
 
+### BM-25 · Variaciones deterministas de partida [P1]
+**Como** jugador, **quiero** elegir una variación inicial reproducible, **para** ensayar otra estrategia.
+**Criterios:** tres escenarios prefijados: Primer vuelo (48 energía, tormenta 3, alerta 6), Reserva reforzada (56 energía, tormenta 4, alerta 7) y Señales tempranas (48 energía, tormenta 2, alerta 5). No se alteran los datos NASA y no se usa aleatoriedad.
+
 **Mejoras en historias existentes:** BM-02 incluye objetivos cortos visibles; BM-24 añade metas guiadas solo P1; BM-15 mantiene registro NASA histórico y atribución; BM-17 exige relación causal tras decisiones; BM-18 presenta informe completo con dos decisiones reales; BM-19 garantiza robot usable en móvil; BM-20 añade tests de mensajes/previsualizaciones e informe.
 
 **QA adicional:**
@@ -410,9 +427,12 @@ Cada entrega del agente debe informar: **(1) HU resueltas, (2) archivos modifica
 
 ## 16. Control de versiones y decisiones cerradas v3
 
-- **Documentos alineados**: `NASA_Documento_Maestro_v3.docx` + `NASA_AGENTE_IA_v3.md` (ambos versión 3.0).
-- **Conservados de v2**: 48 energía inicial; tormenta en soles 3–4; actividad solar en sol 6; refugio cuesta 6 y ocupa astronauta sin detener el cultivo automáticamente; continuar expone +60; victoria exige índice < 50; segundo panel cuesta 2 repuestos y genera +6/+2; mapa SVG/DOM P0 y Phaser P1; descarga DONKI y primer despliegue al inicio.
-- **Nuevos**: NOVA P0, previsualización P0, informe causal ampliado P0, tres objetivos visibles P0 e insignias P1.
+- **Documentos alineados**: `NASA_Documento_Maestro_v3.docx` + `NASA_AGENTE_IA_v3.md`; las decisiones de esta rama se incorporan a los dos archivos sin cambiar el identificador V3.
+- **Balance conservado para Primer vuelo**: 48 energía inicial; tormenta en soles 3–4; actividad solar en sol 6; refugio cuesta 6 y ocupa astronauta sin detener el cultivo automáticamente; continuar expone +60; victoria exige índice < 50; segundo panel cuesta 2 repuestos y genera +6/+2.
+- **Cierre BM-06 acordado por el equipo**: un cierre de soporte vital crítico termina la misión de inmediato. Se elimina la regla anterior de dos cierres críticos consecutivos.
+- **BM-25 acordado por el equipo**: usar tres variaciones deterministas de energía inicial y soles de evento, detalladas en §6.2. No alterar registros NASA.
+- **Exploración acordada para Base Marte**: mundo 2D cenital de 4,800 × 3,200 unidades con cámara de seguimiento, movimiento por teclado, pad o clic/tap, y proximidad para acciones físicas. El movimiento no cambia recursos ni el turno; la referencia a mundo abierto se limita a exploración educativa.
+- **Nuevas mejoras**: NOVA P0, previsualización P0, informe causal ampliado P0, tres objetivos visibles P0 y metas/insignias P1.
 - **Fuera de alcance**: IA de chat en tiempo real, diálogos generados por modelo remoto, entrenamiento de modelos, síntesis de voz compleja, múltiples misiones desbloqueables y economía de recompensas.
 - **Las imágenes son referencias artísticas**, nunca interfaces implementadas ni registros científicos de NASA.
 

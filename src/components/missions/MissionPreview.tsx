@@ -1,0 +1,28 @@
+import { Check, Compass, Leaf, ShieldCheck, Sparkles, Target, Zap } from 'lucide-react'
+import type { GameState } from '../../engine/types'
+
+export function MissionPreview({ game, dismissed, onDismiss, onSow, onFocusMap }: { game: GameState; dismissed: boolean; onDismiss: () => void; onSow: () => void; onFocusMap: () => void }) {
+  const built = game.buildings.some((building) => building.type === 'greenhouse')
+  const cropStarted = game.crop.active
+  const harvested = game.foodHarvested > 0
+  const objectives = [
+    { title: 'Prepara un invernadero', detail: 'Elige una parcela libre y guarda repuestos para construir.', done: built, icon: Leaf },
+    { title: 'Cultiva alimentos', detail: harvested ? `Ya recogiste ${game.foodHarvested} de comida.` : cropStarted ? `El cultivo va por ${game.crop.growth} %; cuida su modo y reservas.` : 'Siembra cuando el equipo vuelva a estar libre.', done: harvested, icon: Zap },
+    { title: 'Protege a la tripulación', detail: game.shelterUsed ? 'El equipo ya usó el refugio solar.' : game.educationalRisk >= 50 ? 'La tripulación quedó expuesta en la alerta.' : 'Guarda 6 de energía para la alerta solar.', done: game.shelterUsed, icon: ShieldCheck },
+  ]
+  const instruction = !built
+    ? { title: 'Paso 1 · Recorre la base', detail: 'Camina hasta una parcela libre y selecciónala en el mapa. Desde el taller podrás preparar el invernadero.', action: 'Volver al mapa', onClick: onFocusMap }
+    : !cropStarted
+      ? { title: 'Paso 2 · Siembra', detail: 'La tripulación terminó de construir. Sembrar cuesta 25 de energía, 10 de agua y 1 semilla.', action: 'Vista previa de siembra', onClick: onSow }
+      : { title: 'Paso 3 · Cuida el cultivo', detail: game.crop.growth >= 100 ? 'El cultivo está listo. Recógelo antes de que termine la misión.' : `El cultivo ha crecido ${game.crop.growth} %. Vigila agua y energía antes de cada sol.`, action: 'Ir al invernadero', onClick: onFocusMap }
+  return <div className="space-y-3">
+    {!dismissed && !game.gameOver && <section aria-labelledby="tutorial-title" className="relative overflow-hidden rounded-[1.4rem] border-2 border-[#f8cf80] bg-[#4a3550] p-4 text-white shadow-[0_8px_22px_#35233a26] sm:p-5"><div className="absolute -right-6 -top-6 size-24 rounded-full bg-[#f5a25d]/20 blur-xl"/><div className="relative flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[#f4aa61] text-[#483148]"><Compass size={19}/></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="text-[10px] font-extrabold uppercase tracking-[.15em] text-[#ffd996]">Tutorial de la misión</p><h2 id="tutorial-title" className="mt-1 text-base font-black sm:text-lg">{instruction.title}</h2></div><button type="button" onClick={onDismiss} aria-label="Ocultar tutorial" className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/10 text-xs font-black hover:bg-white/20 focus-visible:outline-4 focus-visible:outline-white">×</button></div><p className="mt-2 text-xs leading-5 text-white/85">{instruction.detail}</p><button type="button" onClick={instruction.onClick} className="mt-3 min-h-10 rounded-xl bg-[#ffe5aa] px-4 text-xs font-black text-[#493550] hover:bg-white focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white">{instruction.action}</button></div></div></section>}
+    <section aria-labelledby="objectives-title" className="rounded-[1.4rem] border-2 border-white bg-[#fff5e2] p-4 shadow-[0_8px_22px_#35233a18] sm:p-5"><header className="flex items-center justify-between gap-2"><div><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#92655d]">Misión · sol {game.sol} de {game.maxSols}</p><h2 id="objectives-title" className="mt-1 text-lg font-black text-[#332f52]">Primeros pasos en Marte</h2></div><span className="grid size-10 place-items-center rounded-2xl bg-[#eeddbf] text-[#846843]"><Target size={19}/></span></header><ol className="mt-3 space-y-2">{objectives.map(({ title, detail, done, icon: Icon }, index) => <li key={title} className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${done ? 'border-[#b7d7a9] bg-[#edf5e7]' : 'border-[#ead5bc] bg-white/85'}`}><span className={`grid size-8 shrink-0 place-items-center rounded-lg ${done ? 'bg-[#76ac69] text-white' : 'bg-[#efe3ce] text-[#765f56]'}`}>{done ? <Check size={16} aria-hidden="true"/> : <Icon size={16} aria-hidden="true"/>}</span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><h3 className="text-xs font-black text-[#3d3451]">{index + 1}. {title}</h3><span className="text-[9px] font-black uppercase text-[#6d815f]">{done ? 'Completo' : 'Pendiente'}</span></div><p className="mt-1 text-[10px] leading-4 text-[#695f65]">{detail}</p></div></li>)}</ol>
+      <div className="mt-3 rounded-xl bg-[#f2e5d1] px-3 py-2"><p className="flex items-center gap-2 text-[10px] font-black text-[#625061]"><Sparkles size={13}/> Metas de aprendizaje</p><div className="mt-2 flex flex-wrap gap-1.5"><GoalChip done={game.resources.energy >= 6 && game.educationalRisk < 50} label="Reserva energía para cuidar al equipo"/><GoalChip done={harvested} label="Comprueba cuánto alimento aporta una cosecha"/><GoalChip done={game.events.length >= 2 && game.events.every((event) => event.resolved)} label="Resuelve los dos eventos"/></div></div>
+    </section>
+  </div>
+}
+
+function GoalChip({ done, label }: { done: boolean; label: string }) {
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-bold ${done ? 'bg-[#d8ebd0] text-[#446c46]' : 'bg-white/70 text-[#756671]'}`}><span aria-hidden="true">{done ? '✓' : '○'}</span>{label}</span>
+}
