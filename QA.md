@@ -37,3 +37,21 @@ Rama: `feat/base-marte-juego-2d`
 ## Consideraciones
 
 El plazo de 40 segundos y el refugio físico amplían la resolución de alerta por panel descrita en V3. El sol ahora termina cada seis minutos y se puede adelantar por 10 de energía, mientras V3 solo definía el cierre manual. Las cajas de suministros son una mecánica solicitada después de V3 y están identificadas como carga narrativa, no como registro de NASA. La observación DONKI citada corresponde al Sol el 3 de enero de 2025. No se consultan avisos solares en vivo. El botón de pantalla completa solicita la API nativa del navegador; si no está disponible, se muestra un aviso dentro del juego.
+
+## Rama feat/english-translation (15 de noviembre de 2026)
+
+Cambios:
+
+- Todo el texto del juego, los mensajes del motor, NOVA, los diálogos, `index.html` y el `README.md` pasaron a inglés. Los documentos internos del equipo siguen en español.
+- Rendimiento: las capas fijas del mapa (terreno, rocas, puntos de referencia, parcelas, cajas, visitantes y edificios) se memorizan con `React.memo`. El astronauta se dibuja desde un estado local en cada fotograma y la posición se publica al store cada 200 ms y al detenerse, en lugar de cada 50 ms. El reloj del sol vive en el componente `SolClock` y la cuenta atrás solar ya no re-renderiza la pantalla cuando el segundo no cambia.
+- Nave misteriosa: la animación SVG (`animateTransform`) contaba desde la carga de la página, así que al aparecer a los 8–30 s ya estaba terminada y la nave quedaba congelada fuera de la vista. Ahora el vuelo usa la Web Animations API desde que aparece, cruza la vista pasando cerca del astronauta, dura 7 s, sale siempre en el sol 1 (a los 20 s) y en la mitad de los soles siguientes.
+- Las etiquetas de parcelas y cajas ajustan su ancho al texto.
+
+| Comprobación | Resultado |
+|---|---|
+| `npm run test` | Correcto: 44 pruebas aprobadas en 5 archivos (2 nuevas sobre la nave). |
+| `npm run lint` | Correcto, sin errores. |
+| `npm run build` | Correcto. |
+| Navegador (Chrome sin interfaz, 1440 × 900) | Portada y misión en inglés sin errores de consola; la nave cruza la pantalla en el sol 1. |
+| Rendimiento (Chrome con CPU ×4 más lenta, 5 s caminando) | Tiempo de JavaScript de ~1.28 s a ~0.76 s; de 85–88 a 94–102 fotogramas. El resto del costo es el pintado del SVG grande. |
+| Pendiente | Revisar en el navegador del equipo; adaptación móvil sin decidir (BM-19 vs. guía de continuidad). |
