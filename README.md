@@ -1,323 +1,111 @@
-# Base Marte
+# Mars Base
 
-Proyecto desarrollado para el NASA Space Apps Challenge 2026, en el reto **Build a Junior Astronaut Mission Trainer**.
+Explore a Martian valley, look after a crew and help NOVA keep the colony alive. Mars Base is an educational browser game for kids ages 7–12, built for the 2026 NASA Space Apps Challenge (*Build a Junior Astronaut Mission Trainer*). This README is a guide for players and has what you need to run the project.
 
-Base Marte es un videojuego web educativo dirigido a niños de 7 a 12 años. El jugador administra una colonia en Marte y debe tomar decisiones para mantener a salvo a los astronautas, controlar los recursos disponibles y garantizar el funcionamiento de la base.
+## Your mission
 
-Durante la partida se podrán construir instalaciones, producir alimentos en un invernadero, administrar energía y agua, y responder a situaciones como tormentas de polvo o eventos solares.
+Keep the colony running for eight sols (a **sol** is one Martian day). To win, the crew must reach the end with energy, water and food above zero, harvest at least one crop and keep the exposure level below 50.
 
-El juego contará con NOVA, un robot asistente que ayudará al jugador a comprender las misiones, advertirá sobre posibles problemas y explicará las consecuencias de sus decisiones.
+The mission is split into 7 chapters shown at the top of the screen, one goal at a time. A **yellow arrow** on the map points to where you need to go (it turns red for urgent goals):
 
-La primera versión consiste en una misión de 8 soles marcianos, en la que el jugador deberá mantener el soporte vital, conseguir una cosecha y proteger a la tripulación.
+1. Collect a supply · 2. Build a greenhouse · 3. Plant seeds · 4. Build the rover garage · 5. Grow the crop to 100 % · 6. Harvest the food · 7. Keep the colony safe until sol 8
 
-## Tecnologías utilizadas
+## Time
 
-- React
-- TypeScript
-- Vite
-- Tailwind CSS v4
-- Zustand
-- SVG para el mapa interactivo
-- Vitest para pruebas
-- Lucide React para iconos
+Each mission has its own sol length, so a whole game takes about 20–28 minutes:
 
-El proyecto funciona desde el navegador. No requiere backend, base de datos ni autenticación.
+| Mission | Sol length | Events |
+| --- | --- | --- |
+| First flight | 3 min | Dust storm on sol 3, solar storm on sol 6 |
+| Extra reserves | 3.5 min | Dust storm on sol 4, solar storm on sol 7 (starts with more energy) |
+| Early signals | 2.5 min | Dust storm on sol 2, solar storm on sol 5 |
 
-## Requisitos previos
+To skip ahead, go into the habitat (press **E** at the door) and choose **Sleep until morning**. The night passes and the next sol starts with no extra cost. The “Advance to sol” button also works, but it costs 10 energy.
 
-Antes de ejecutar el proyecto, es necesario tener instalado:
+## Resources
 
-- Node.js compatible con Vite
-- npm
-- Git
-- Visual Studio Code o cualquier editor de código
+- Every sol, life support uses 10 ⚡ energy, 2 💧 water and 3 🍞 food.
+- **Walking costs a little too:** about 1 energy every 2,000 steps, 1 water every 5,000 and 1 food every 6,000. The rover uses only energy.
+- **Cold nights:** on Mars nights colder than −97 °C (real archived NASA InSight temperatures), the crew eats 1 extra food to keep warm.
+- **If energy, water or food reaches 0**, a red alert starts a 60-second countdown. Follow the arrow to a supply and refill it, or the mission ends.
 
-Para comprobar las instalaciones, ejecutar:
+The valley has crates, ice deposits and battery cells. Walk to one and press **E**: a ring fills up while you collect it. Each spot refills a few sols later. They are story items placed by the expedition, not NASA data.
+
+## Buildings
+
+Walk to a free plot, tap it and open **Build**. The crew builds until the sol ends; you can keep exploring meanwhile, and a ⚙️ shows the progress.
+
+| Building | Cost | What it does |
+| --- | --- | --- |
+| 🌱 Greenhouse | 2 spare parts | Lets you plant seeds. After a harvest you can plant again if you have a seed. |
+| 🚙 Rover garage | 2 spare parts | Unlocks the Mars rover: press **R** next to it to drive twice as fast. |
+| 💧 Water extractor | 2 spare parts | +5 water every sol from underground ice. |
+| 🛡️ Storm bunker | 1 spare part | An extra safe zone for solar storms (entering costs 3 energy). |
+| ☀️ Second solar panel | 2 spare parts | +6 energy every sol (+2 during a dust storm). |
+
+## Crops
+
+Plant in the greenhouse (25 energy, 10 water, 1 seed). The plant grows each time a sol ends: 🌱 → 🌿 → 🪴 → 🥬. Normal mode grows 20 points per sol, saving mode 10 and uses less energy and water. A healthy harvest gives 35 food.
+
+## Storms and safe zones
+
+- **Dust storm:** a big card asks you to choose: 🐢 save energy (slower plants) or 🚀 keep growing fast (uses more energy).
+- **Solar storm:** run to a safe zone before the timer ends: 🏠 the habitat (6 energy), 🛡️ a storm bunker (3 energy) or 🕳️ the lava tube cave (free, but far). Lava tubes are real places scientists study as possible shelters. If you don't make it, the exposure level goes up by 60.
+- **Obstacles:** crater rims and rocks block the way, and soft dunes slow you down. Go around them.
+
+## NOVA, visitors and the ending
+
+NOVA gives tips in her own window. The astronauts in the valley talk in speech bubbles over their heads: walk up and press **E**. Keep an eye on the sky on sol 1…
+
+When the mission ends you get a rocket launch and a printable **Junior Astronaut Certificate**, or a rescue ship with a tip from NOVA for the next try.
+
+## NASA data used
+
+| Source | What the game reads | What it changes |
+| --- | --- | --- |
+| [DONKI GST](https://api.nasa.gov/) via api.nasa.gov (live, last 30 days) | Strongest geomagnetic storm (Kp index) | Seconds to reach a safe zone in the solar storm: calm 50 s, active 45 s, stormy 35 s |
+| [DONKI CME](https://api.nasa.gov/) (live, last 30 days) | Number and speed of coronal mass ejections | Shown in the solar alert and the NASA Science panel |
+| [DONKI FLR](https://api.nasa.gov/) (live when available) | Solar flares | Shown in NASA Science; the endpoint sometimes answers 404, so the game keeps its archived X1.2 flare (January 3, 2025) |
+| [InSight Mars Weather Service](https://api.nasa.gov/) (archived) | Night temperatures at Elysium Planitia, sols 675–681 (October 2020) | Cold nights (below −97 °C) make the crew eat 1 extra food |
+
+The game reads these when it opens and caches them for 6 hours. If the API cannot be reached (offline, or the DEMO_KEY limit of 30 requests per hour is used up), it uses an archived snapshot from November 16, 2026 and says so. Space weather is measured near Earth, and InSight stopped sending weather in 2020; the game labels both. Energy, water, food, exposure and other numbers are game values chosen by the team.
+
+To use your own free key, copy `.env.example` to `.env.local` and set `VITE_NASA_API_KEY`.
+
+## Running the project
+
+Dependencies are pinned in `package-lock.json`.
 
 ```bash
-node -v
-npm -v
-git --version
-```
-
-## Instalación del proyecto
-
-Clonar el repositorio:
-
-```bash
-git clone https://github.com/TU_USUARIO/base-marte-nasa.git
-```
-
-Ingresar a la carpeta:
-
-```bash
-cd base-marte-nasa
-```
-
-Cambiar a la rama de desarrollo:
-
-```bash
-git switch dev
-```
-
-Instalar las dependencias:
-
-```bash
-npm install
-```
-
-Iniciar el servidor de desarrollo:
-
-```bash
+npm ci
 npm run dev
 ```
 
-Abrir en el navegador la dirección que aparece en la terminal, normalmente:
-
-```text
-http://localhost:5173/
-```
-
-## Configuración de Tailwind CSS
-
-El proyecto utiliza Tailwind CSS v4 para los estilos.
-
-La configuración se encuentra en `vite.config.ts`, mediante el plugin `@tailwindcss/vite`.
-
-El archivo `src/index.css` contiene:
-
-```css
-@import "tailwindcss";
-```
-
-Todos los estilos de los componentes deben realizarse con clases de Tailwind en los archivos `.tsx`.
-
-No se deben crear archivos CSS individuales, utilizar CSS Modules ni instalar otras librerías de estilos sin acordarlo con el equipo.
-
-## Estructura del proyecto
-
-```text
-base-marte-nasa/
-│
-├── public/
-│   └── assets/
-│       ├── images/
-│       ├── robots/
-│       ├── buildings/
-│       ├── backgrounds/
-│       └── icons/
-│
-├── src/
-│   ├── app/
-│   ├── components/
-│   │   ├── hud/
-│   │   ├── map/
-│   │   ├── buildings/
-│   │   ├── greenhouse/
-│   │   ├── events/
-│   │   ├── missions/
-│   │   ├── nova/
-│   │   ├── science/
-│   │   ├── results/
-│   │   ├── tutorial/
-│   │   └── shared/
-│   │
-│   ├── engine/
-│   ├── store/
-│   ├── data/
-│   │   └── nasa/
-│   ├── tests/
-│   ├── types/
-│   ├── utils/
-│   ├── index.css
-│   └── main.tsx
-│
-├── docs/
-│   └── NASA_Documento_Maestro_v3.docx
-│
-├── AGENTS.md
-├── NASA_AGENTE_IA_v3.md
-├── QA.md
-├── README.md
-├── package.json
-└── vite.config.ts
-```
-
-## Descripción de las carpetas
-
-### public/assets
-
-Contiene los recursos gráficos utilizados en el videojuego.
-
-- `images`: imágenes generales.
-- `robots`: imágenes y animaciones del robot NOVA.
-- `buildings`: imágenes de edificios y construcciones.
-- `backgrounds`: fondos y escenarios de Marte.
-- `icons`: iconos propios del juego.
-
-### src/app
-
-Contiene el componente principal de la aplicación.
-
-### src/components
-
-Contiene los componentes de interfaz organizados según su funcionalidad.
-
-- `hud`: indicadores de energía, agua, comida y soporte vital.
-- `map`: mapa de Marte y parcelas interactivas.
-- `buildings`: selección y construcción de edificios.
-- `greenhouse`: funcionamiento del invernadero, cultivos y cosechas.
-- `events`: tormentas, alertas solares y decisiones.
-- `missions`: objetivos y progreso de la misión.
-- `nova`: robot asistente, mensajes y recomendaciones.
-- `science`: información científica y fuentes de NASA.
-- `results`: resultados de victoria o derrota.
-- `tutorial`: instrucciones iniciales del juego.
-- `shared`: componentes reutilizables.
-
-### src/engine
-
-Contiene las reglas principales del videojuego.
-
-Desde esta carpeta se administran los recursos, el avance de los soles, los costos de construcción, el crecimiento de los cultivos y las condiciones para ganar o perder.
-
-Los valores de la simulación se centralizan en `config.ts`.
-
-La lógica de esta carpeta debe mantenerse independiente de los componentes React.
-
-### src/store
-
-Contiene el estado del juego administrado mediante Zustand.
-
-Permite compartir información entre los componentes y ejecutar las acciones definidas en el motor.
-
-### src/data/nasa
-
-Contiene los registros científicos utilizados en el juego y la información de sus fuentes.
-
-Los datos obtenidos de NASA deben diferenciarse de los valores creados para la simulación.
-
-### src/tests
-
-Contiene las pruebas automatizadas realizadas con Vitest.
-
-### src/types
-
-Contiene tipos e interfaces compartidos que no pertenecen directamente al motor.
-
-### src/utils
-
-Contiene funciones auxiliares reutilizables.
-
-### docs
-
-Contiene el documento maestro del proyecto, donde están las historias de usuario, los criterios de aceptación, las reglas y el alcance del desarrollo.
-
-## Documentación del proyecto
-
-Antes de comenzar una funcionalidad, revisar los siguientes archivos:
-
-- `docs/NASA_Documento_Maestro_v3.docx`: documento principal del proyecto.
-- `NASA_AGENTE_IA_v3.md`: instrucciones técnicas, reglas y criterios para los agentes de IA.
-- `AGENTS.md`: convenciones generales y restricciones de desarrollo.
-- `QA.md`: registro de pruebas y funcionalidades verificadas.
-
-Estos documentos deben mantenerse actualizados cuando el equipo apruebe cambios importantes.
-
-## Trabajo con Git
-
-El repositorio utiliza las siguientes ramas:
-
-- `main`: versión estable.
-- `dev`: rama de integración.
-- `feat/bm-XX-descripcion`: desarrollo de historias de usuario.
-
-Las nuevas funcionalidades deben desarrollarse en ramas creadas desde `dev`.
-
-Ejemplo para comenzar una historia:
-
-```bash
-git switch dev
-git pull origin dev
-git switch -c feat/bm-26-nova
-```
-
-Después de desarrollar y probar los cambios:
-
-```bash
-git add .
-git commit -m "feat(nova): implementar asistente robotico"
-git push -u origin feat/bm-26-nova
-```
-
-Luego se crea un Pull Request hacia `dev`.
-
-Los cambios se integrarán a `main` cuando las funcionalidades estén verificadas.
-
-No se debe trabajar directamente sobre `main`.
-
-## Uso de agentes de IA
-
-El equipo utilizará agentes de IA como apoyo para desarrollar las historias de usuario.
-
-Antes de solicitar una implementación, el agente debe revisar `AGENTS.md`, `NASA_AGENTE_IA_v3.md` y la documentación correspondiente.
-
-Se debe trabajar una historia de usuario a la vez, respetando los criterios de aceptación y las tecnologías establecidas.
-
-No se deben agregar funcionalidades, dependencias o cambios de arquitectura que no estén contemplados sin consultarlo con el equipo.
-
-Cada integrante es responsable de revisar y probar el código generado antes de integrarlo.
-
-## Pruebas
-
-Para ejecutar las pruebas automatizadas:
+Vite prints the local address. To check the project:
 
 ```bash
 npm run test
-```
-
-Para generar la versión de producción:
-
-```bash
+npm run lint
 npm run build
-```
-
-Para comprobar el resultado compilado:
-
-```bash
 npm run preview
 ```
 
-Cada historia debe cumplir sus criterios de aceptación antes de considerarse terminada.
+## Technology and structure
 
-Los resultados de las pruebas se registrarán en `QA.md`.
+React, TypeScript, Vite, Tailwind CSS v4, Zustand, Lucide React and Vitest. The 2D map uses SVG and the DOM; there is no 3D engine and no backend.
 
-## Alcance inicial
+- `src/app/`: home, mission, guide, science, report and navigation.
+- `src/components/`: map (and `MapExtras` for the rover, new buildings and guide arrow), HUD, construction, crops, events, objectives, NOVA, results and sources.
+- `src/engine/`: state, rules, actions, events, objectives, safe zones, previews and mission report.
+- `src/store/useGameStore.ts`: the single game store, NASA data and UI preferences.
+- `src/data/mars/`: world, terrain (obstacles, dunes, safe zones), plots, visitors, supplies and movement.
+- `src/data/nasa/`: NASA API client, archived snapshots and source attribution.
+- `src/tests/`: rules, routes, store, movement, terrain, NASA parsing and the launch screen.
 
-Durante el hackathon se priorizará una versión funcional que permita:
+## Project documents (team, in Spanish)
 
-- Iniciar una misión de 8 soles.
-- Consultar y administrar recursos.
-- Visualizar la colonia en un mapa interactivo.
-- Construir paneles solares y un invernadero.
-- Sembrar, mantener cultivos y cosechar alimentos.
-- Asignar tareas básicas a la tripulación.
-- Responder a tormentas de polvo y alertas solares.
-- Recibir ayuda del robot NOVA.
-- Consultar información científica de NASA.
-- Comprender las consecuencias de las decisiones.
-- Completar una misión y consultar el informe final.
-
-Las funcionalidades adicionales se desarrollarán después de comprobar el funcionamiento de la primera versión.
-
-## Publicación
-
-El proyecto está preparado para publicarse como una aplicación web estática.
-
-La compilación se genera mediante:
-
-```bash
-npm run build
-```
-
-Los archivos resultantes se encuentran en la carpeta `dist/` y podrán publicarse en un servicio de alojamiento compatible con aplicaciones estáticas.
+- `AGENTS.md`: repository conventions.
+- `NASA_AGENTE_IA_v3.md`: original V3 architecture and user stories.
+- `docs/NASA_Documento_Maestro_v3.docx`: main specification and original acceptance criteria.
+- `QA.md`: checks run and pending work.
+- `docs/GUIA_CONTINUIDAD_BASE_MARTE.md`: changes after V3 and how to continue the project.

@@ -29,3 +29,6 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Temporary local renders used to review Word documents
+docs/.docx_preview/
