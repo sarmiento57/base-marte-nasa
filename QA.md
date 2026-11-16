@@ -85,3 +85,23 @@ Fallos corregidos: el contador del segundo panel mostraba 0/2 aunque solo se pod
 | Revisión visual | Flecha guía, rover, globo de Sofía, alerta de emergencia y panel NASA revisados con capturas. |
 | API NASA | Endpoints probados desde el navegador el 16 de noviembre de 2026: CME y GST responden; FLR devolvió 404; InSight devuelve la semana archivada de 2020. Sin red, el juego usa el respaldo archivado (probado). |
 | Pendiente | Probar en la computadora del equipo con la API en vivo; decidir la versión móvil; con DEMO_KEY el límite es 30 consultas por hora por IP (conviene una clave propia en `.env.local`). |
+
+## Rama feat/bug-sweep · corrección de fallos (15 de noviembre de 2026)
+
+Fallos corregidos:
+
+- Objetivos (`src/engine/objectives.ts`): el capítulo del garaje del rover o saltar una caja inicial ya no bloquean las flechas de cultivo ni la cosecha (`harvest` y `survive` tienen prioridad cuando el cultivo llega a 100 % o ya se cosechó; no manda a construir mientras la tripulación está ocupada).
+- Refugio con 0 energía (`src/engine/actions.ts`, `src/app/GameScreen.tsx`): dormir hasta el amanecer funciona cuando la tripulación está refugiada aunque el costo de energía del refugio haya dejado la reserva en 0; la alerta de emergencia se posiciona debajo del aviso de refugio exterior (`top-[360px]`).
+- Soporte vital y NOVA (`src/engine/actions.ts`, `src/components/nova/novaRules.ts`, `src/components/nova/NovaAssistant.tsx`): `lifeSupport` y `lifeSupportReason` se actualizan de inmediato al bajar reservas; las alertas urgentes de NOVA ya no son reemplazadas por mensajes aleatorios previos.
+- Relojes y guardado (`src/store/useGameStore.ts`, `src/app/GameScreen.tsx`, `src/components/map/MarsMap.tsx`): `SolClock`, `EmergencyAlert` y la cuenta atrás solar se restauran al entrar por `Explore`, se pausan fuera de la vista de juego o durante pantallas de carga/sueño (evitando doble avance con `SleepOverlay`) y la posición al detenerse se guarda de inmediato en `localStorage`.
+- Modal y paneles (`src/app/GameScreen.tsx`, `src/components/buildings/BuildingPreview.tsx`, `src/components/events/EventStatus.tsx`, `src/components/map/ShipInterior.tsx`): `DecisionPreviewModal` muestra el nombre real de cada edificio (`water extractor`, `rover garage`, `storm bunker`, `second solar panel`) y queda por encima de alertas (`z-[110]`); `BuildingPreview` bloquea botones si hay alerta activa; `ShipInterior` permite scroll en portátiles (`1280×720`); `EventStatus` menciona las tres zonas seguras.
+- Mapa e interfaz (`src/components/map/MarsMap.tsx`, `src/components/map/MapExtras.tsx`, `src/components/hud/ResourceStatus.tsx`, `src/app/App.tsx`, `src/app/HowToScreen.tsx`, `src/app/MissionReportScreen.tsx`): `ObjectiveGuide` y anillos ya no interceptan clics; prioridad de tecla `E` en refugios durante tormenta solar; recolección al hacer clic en cajas lejanas y aviso inmediato con almacén lleno; barra inferior sin solapamiento entre el dock y el botón de avanzar en `1280×800` y `375×812`; botones de regreso en `Science`, `HowToScreen` y `MissionReportScreen` alineados a la derecha con margen inferior para no quedar tapados por NOVA.
+- Caché NASA (`src/data/nasa/nasaApi.ts`): validación defensiva de `readCachedConditions` ante JSON incompleto.
+
+| Comprobación | Resultado |
+|---|---|
+| `npm run test` | Correcto: 79 pruebas aprobadas en 7 archivos (18 nuevas en `src/tests/bugFixes.test.tsx`). |
+| `npm run lint` | Correcto, sin errores. |
+| `npm run build` | Correcto: TypeScript y Vite (`dist/`). |
+| Navegador (`vite preview`, 1280×800 y 375×812) | Verificado flujo inicial, persistencia de posición tras recargar por `Explore`, separación de dock y avance, título de `Build water extractor`, construcción de invernadero, transición Sol 1 → Sol 2, separación de botones en `How to play` respecto a NOVA y retorno sin pantalla de aterrizaje. Sin errores de consola JS (1 404 esperado en DONKI FLR con respaldo archivado). |
+| Pendiente de QA | Comprobar en navegador la recolección remota por clic y la vista `ShipInterior` a 1280×720 tras detener la última pasada para cumplir el cierre antes de las 23:59 (cubierto por pruebas en Vitest). |
