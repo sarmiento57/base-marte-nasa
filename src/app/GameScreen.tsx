@@ -5,6 +5,7 @@ import { EventStatus } from '../components/events/EventStatus'
 import { ResourceStatus } from '../components/hud/ResourceStatus'
 import { MarsMap } from '../components/map/MarsMap'
 import { ShipInterior } from '../components/map/ShipInterior'
+import { LoadingScreen } from '../components/shared/LoadingScreen'
 import { MissionPreview } from '../components/missions/MissionPreview'
 import { NovaAssistant, NovaChatter } from '../components/nova/NovaAssistant'
 import { ScienceSources } from '../components/science/ScienceSources'
@@ -12,10 +13,16 @@ import { isWithinInteractionRange } from '../data/mars/movement'
 import { marsPlots } from '../data/mars/plots'
 import { supplySites } from '../data/mars/supplies'
 import { MARS_WORLD } from '../data/mars/world'
-import { GAME_CONFIG, GREENHOUSE_MODE } from '../engine/config'
+import { BUILDING_ICON, BUILDING_LABEL, GAME_CONFIG, GREENHOUSE_MODE, SHELTER_WINDOW_SECONDS, solSecondsFor } from '../engine/config'
+import { supplyReadyOnSol } from '../engine/actions'
+import { ObjectiveTracker } from '../components/missions/ObjectiveTracker'
+import { DustStormCard } from '../components/events/DustStormCard'
+import { EmergencyAlert } from '../components/events/EmergencyAlert'
+import { SleepOverlay } from '../components/shared/SleepOverlay'
+import { MissionEnding } from '../components/results/MissionEnding'
 import { pendingEvent } from '../engine/events'
 import { previewDecision } from '../engine/previewDecision'
-import type { GameCommand, GameState, GreenhouseMode, ResourceName, WorldPosition } from '../engine/types'
+import type { BuildingType, GameCommand, GameState, GreenhouseMode, ResourceName, ScenarioId, WorldPosition } from '../engine/types'
 import { useGameStore } from '../store/useGameStore'
 import { MissionReportScreen } from './MissionReportScreen'
 
@@ -39,6 +46,8 @@ const panelTitles: Record<GamePanel, string> = {
   nova: 'NOVA mission assistant', report: 'Mission report',
 }
 
+const LANDING_STEPS = ['Opening the habitat hatch', 'Scanning the valley', 'Syncing colony reserves', 'NOVA is ready'] as const
+
 export function GameScreen() {
   const game = useGameStore((state) => state.game)
   const solStartedAt = useGameStore((state) => state.solStartedAt)
@@ -54,15 +63,25 @@ export function GameScreen() {
   const dismissTutorial = useGameStore((state) => state.dismissTutorial)
   const setScreen = useGameStore((state) => state.setScreen)
   const setNovaExpanded = useGameStore((state) => state.setNovaExpanded)
+  const emergencyStartedAt = useGameStore((state) => state.emergencyStartedAt)
+  const restartGame = useGameStore((state) => state.restartGame)
+  const previousScreen = useGameStore((state) => state.previousScreen)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [panel, setPanel] = useState<GamePanel | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [fullscreenError, setFullscreenError] = useState(false)
   const [shipInteriorOpen, setShipInteriorOpen] = useState(false)
+  // The landing screen shows when arriving from camp, not when coming back from the Science page.
+  const [landing, setLanding] = useState(() => previousScreen !== 'science' && previousScreen !== 'howto')
+  const [sleeping, setSleeping] = useState(false)
+  // Remembers which finished game the player already closed the ending for (its log length).
+  const [endingClosedAt, setEndingClosedAt] = useState<number | null>(null)
   const [solarClock, setSolarClock] = useState<{ eventId: string; seconds: number } | null>(null)
   const event = game ? pendingEvent(game) : undefined
+  // Real recent space weather (NASA DONKI) decides how long the crew has to reach a safe zone.
+  const shelterWindow = SHELTER_WINDOW_SECONDS[game?.conditions?.spaceWeather ?? 'active']
   const solarSecondsRemaining = event?.kind === 'solar'
-    ? solarClock?.eventId === event.id ? solarClock.seconds : GAME_CONFIG.solarShelterWindowSeconds
+    ? solarClock?.eventId === event.id ? solarClock.seconds : shelterWindow
     : null
   const preview = game && previewCommand ? previewDecision(game, previewCommand) : null
   const nextSolarOutput = useMemo(() => {
@@ -79,7 +98,7 @@ export function GameScreen() {
   }, [])
   useEffect(() => {
     if (event?.kind !== 'solar') return
-    const deadline = Date.now() + GAME_CONFIG.solarShelterWindowSeconds * 1000
+    const deadline = Date.now() + shelterWindow * 1000
     let expired = false
     let timer = 0
     const updateCountdown = () => {
@@ -93,7 +112,7 @@ export function GameScreen() {
     }
     timer = window.setInterval(updateCountdown, 200)
     return () => window.clearInterval(timer)
-  }, [event?.id, event?.kind, dispatch])
+  }, [event?.id, event?.kind, dispatch, shelterWindow])
   // Stable so the memoized map does not re-render when the HUD or clock changes.
   const enterHabitat = useCallback(() => {
     const current = useGameStore.getState().game
@@ -103,6 +122,7 @@ export function GameScreen() {
     setPanel(null)
     setNovaExpanded(false)
   }, [dispatch, setNovaExpanded])
+  const expireEmergency = useCallback(() => { dispatch({ type: 'expireEmergency' }) }, [dispatch])
   if (!game) return <div className="grid h-dvh place-items-center bg-[#342c4b] text-white"><section className="rounded-3xl border border-white/25 bg-[#453b5b] p-10 text-center"><h1 className="text-2xl font-black">No mission is open</h1><button type="button" onClick={() => setScreen('home')} className="mt-5 rounded-xl bg-[#f09662] px-5 py-3 text-sm font-black text-[#332941]">Back to camp</button></section></div>
 
   const activePanel = game.gameOver ? panel ?? 'report' : panel === 'report' ? null : panel
@@ -138,6 +158,17 @@ export function GameScreen() {
   const solarChoice = (choice: 'shelter' | 'continue') => dispatch({ type: 'resolveSolar', choice })
   const advanceTitle = game.sol >= game.maxSols ? 'Close mission' : `Advance to sol ${game.sol + 1}`
   const focusMap = () => setPanel(null)
+  const startSleep = () => {
+    setShipInteriorOpen(false)
+    setPanel(null)
+    setSleeping(true)
+  }
+  const finishSleep = () => {
+    setSleeping(false)
+    dispatch({ type: 'sleep' })
+  }
+  const sleepBlockedReason = event ? 'Resolve the alert first.' : game.emergency?.length ? 'Refill life support first.' : game.gameOver ? 'The mission is over.' : null
+  const shelteredOutside = game.crewTask === 'shelter' && game.shelterZone && game.shelterZone !== 'habitat' && !shipInteriorOpen
 
   return <div id="game-screen-root" ref={rootRef} className="relative isolate h-dvh min-h-[760px] w-screen min-w-[1180px] overflow-hidden bg-[#352c49] font-[Trebuchet_MS,ui-rounded,system-ui,sans-serif] text-[#332f52] selection:bg-[#69d5d5]/50">
     <MarsMap immersive solarSecondsRemaining={solarSecondsRemaining} onEnterHabitat={enterHabitat}/>
@@ -155,7 +186,8 @@ export function GameScreen() {
       </div>
     </header>
 
-    <SolClock solStartedAt={solStartedAt} hasPendingEvent={Boolean(event)} gameOver={game.gameOver}/>
+    <SolClock solStartedAt={solStartedAt} hasPendingEvent={Boolean(event)} gameOver={game.gameOver} scenarioId={game.scenarioId}/>
+    {!event && !game.emergency?.length && !game.gameOver && <ObjectiveTracker game={game}/>}
 
     <nav aria-label="Game modules" className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-[1.4rem] border border-white/30 bg-[#302b48]/92 p-2 shadow-[0_12px_38px_#241d35a8] backdrop-blur-lg">
       {gameModules.map(({ id, label, shortLabel, icon: Icon }) => <button key={id} type="button" onClick={() => togglePanel(id)} aria-pressed={activePanel === id} title={label} className={`flex h-[58px] w-[96px] flex-col items-center justify-center gap-1 rounded-xl border px-2 transition-colors focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-white ${activePanel === id ? 'border-[#ffe09a] bg-[#f4ad69] text-[#392d48] shadow-inner' : 'border-transparent text-white/90 hover:border-white/20 hover:bg-white/10'}`}><Icon size={19} aria-hidden="true"/><span className="text-[10px] font-extrabold">{shortLabel}</span></button>)}
@@ -163,9 +195,9 @@ export function GameScreen() {
 
     <button type="button" title={`Advance early for ${GAME_CONFIG.fastForwardEnergyCost} energy, on top of the sol's normal use`} disabled={Boolean(event) || game.gameOver || game.resources.energy < GAME_CONFIG.fastForwardEnergyCost} onClick={() => run({ type: 'advance' })} className="absolute bottom-7 right-7 z-40 flex h-[58px] items-center gap-2 rounded-2xl border-2 border-white/65 bg-[#d96e4f] px-5 text-sm font-black text-white shadow-[0_10px_30px_#2a1e3690] hover:bg-[#ed845f] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:bg-[#847a7f]"><ArrowRight size={18}/>{advanceTitle}</button>
 
-    {(errorMessage || message || fullscreenError) && <div role={errorMessage ? 'alert' : 'status'} aria-live="polite" className={`absolute left-1/2 top-[82px] z-50 flex w-[min(690px,calc(100vw-520px))] -translate-x-1/2 items-center gap-3 rounded-xl border px-4 py-2.5 text-xs font-bold shadow-xl backdrop-blur-md ${errorMessage ? 'border-[#ffb89a] bg-[#773f46]/95 text-white' : 'border-[#d2dfaf] bg-[#fff4d9]/95 text-[#46384d]'}`}><span aria-hidden="true">{errorMessage ? '!' : '✦'}</span><p className="flex-1">{fullscreenError ? 'This browser does not allow full screen.' : errorMessage ?? message}</p><button type="button" onClick={() => useGameStore.getState().clearMessage()} aria-label="Close message" className="grid size-8 shrink-0 place-items-center rounded-lg hover:bg-black/10 focus-visible:outline-2 focus-visible:outline-current"><X size={16}/></button></div>}
+    {(errorMessage || message || fullscreenError) && <div role={errorMessage ? 'alert' : 'status'} aria-live="polite" className={`absolute left-4 top-[96px] z-50 flex w-[330px] items-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-bold shadow-xl backdrop-blur-md ${errorMessage ? 'border-[#ffb89a] bg-[#773f46]/95 text-white' : 'border-[#d2dfaf] bg-[#fff4d9]/95 text-[#46384d]'}`}><span aria-hidden="true">{errorMessage ? '!' : '✦'}</span><p className="flex-1">{fullscreenError ? 'This browser does not allow full screen.' : errorMessage ?? message}</p><button type="button" onClick={() => useGameStore.getState().clearMessage()} aria-label="Close message" className="grid size-8 shrink-0 place-items-center rounded-lg hover:bg-black/10 focus-visible:outline-2 focus-visible:outline-current"><X size={16}/></button></div>}
 
-    {event?.kind === 'dust' && <div role="status" className="absolute left-1/2 top-[149px] z-30 flex -translate-x-1/2 items-center gap-3 rounded-full border border-[#ffd28a] bg-[#613c49]/90 px-4 py-2 text-[11px] font-black text-white shadow-xl backdrop-blur-md"><span className="text-[#ffd28a]">⚠</span>Dust storm active<button type="button" onClick={() => setPanel('alerts')} className="rounded-full bg-[#f6cd82] px-3 py-1 text-[10px] font-black text-[#443347] hover:bg-white">See effects</button></div>}
+    {event?.kind === 'dust' && !landing && <DustStormCard game={game} onChoose={dustChoice}/>}
 
     <NovaChatter enabled={!activePanel && !game.gameOver} onOpen={() => togglePanel('nova')}/>
 
@@ -185,7 +217,12 @@ export function GameScreen() {
     </section>}
 
     {previewCommand && preview && <DecisionPreviewModal game={game} command={previewCommand} preview={preview} onCancel={cancelPreview} onConfirm={confirmPreview}/>}
-    {shipInteriorOpen && <ShipInterior game={game} onExit={() => setShipInteriorOpen(false)}/>}
+    {game.emergency?.length && emergencyStartedAt !== null && !game.gameOver ? <EmergencyAlert key={emergencyStartedAt} game={game} startedAt={emergencyStartedAt} onExpire={expireEmergency} lower={event?.kind === 'solar'}/> : null}
+    {shelteredOutside && <section role="status" className="absolute left-1/2 top-[132px] z-50 flex w-[min(560px,calc(100vw-40px))] -translate-x-1/2 items-center gap-4 rounded-[1.6rem] border-4 border-[#7af0d8] bg-[#173b3e]/95 p-4 text-white shadow-2xl"><span aria-hidden="true" className="text-5xl">{game.shelterZone === 'cave' ? '🕳️' : '🛡️'}</span><div className="flex-1"><h2 className="text-xl font-black">Safe from the solar storm!</h2><p className="text-sm font-semibold text-white/85">The crew waits in the {game.shelterZone === 'cave' ? 'lava tube cave' : 'storm bunker'} until the sol ends.</p></div><button type="button" onClick={startSleep} disabled={Boolean(sleepBlockedReason)} className="min-h-14 rounded-2xl border-[3px] border-white bg-[#6c5ce7] px-4 text-base font-black hover:bg-[#7f71f0] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-55">🌙 Sleep</button></section>}
+    {shipInteriorOpen && <ShipInterior game={game} onExit={() => setShipInteriorOpen(false)} onSleep={startSleep} sleepBlockedReason={sleepBlockedReason}/>}
+    {sleeping && <SleepOverlay onDone={finishSleep}/>}
+    {game.gameOver && endingClosedAt !== game.log.length && <MissionEnding game={game} onReport={() => { setEndingClosedAt(game.log.length); setPanel('report') }} onRetry={() => { setEndingClosedAt(game.log.length); restartGame() }} onHome={() => { setEndingClosedAt(game.log.length); leaveGame() }}/>}
+    {landing && <LoadingScreen title={`Sol ${game.sol} of ${game.maxSols}`} subtitle="Landing in Ares Valley" steps={LANDING_STEPS} durationMs={1800} factOffset={game.sol} onDone={() => setLanding(false)}/>}
   </div>
 }
 
@@ -197,15 +234,15 @@ function InventoryPanel({ game }: { game: GameState }) {
     { key: 'spareParts', label: 'Spare parts', icon: '🔩', tone: 'bg-[#f2e5da]' },
     { key: 'seeds', label: 'Seeds', icon: '🌱', tone: 'bg-[#e6efd9]' },
   ]
-  const buildingNames = { habitat: 'Habitat', solar: 'Solar panel', greenhouse: 'Greenhouse' } as const
-  const buildingCounts = { habitat: 0, solar: 0, greenhouse: 0 }
+  const buildingNames = BUILDING_LABEL
+  const buildingCounts: Record<BuildingType, number> = { habitat: 0, solar: 0, greenhouse: 0, water: 0, garage: 0, bunker: 0 }
   for (const building of game.buildings) buildingCounts[building.type] += 1
   return <div className="space-y-3 text-[#3e354d]">
     <section aria-label="Available resources" className="grid grid-cols-2 gap-2">{items.map(({ key, label, icon, tone }) => <article key={key} className={`rounded-xl border border-white bg-white/85 p-3 shadow-sm ${tone}`}><p className="flex items-center justify-between text-[10px] font-extrabold text-[#75666a]"><span>{label}</span><span aria-hidden="true" className="text-sm">{icon}</span></p><p className="mt-1 text-2xl font-black tabular-nums">{game.resources[key]}<span className="ml-1 text-[10px] font-bold text-[#897a7a]">{key === 'energy' || key === 'water' || key === 'food' ? '/100' : 'units'}</span></p>{(key === 'energy' || key === 'water' || key === 'food') && <progress aria-label={`${label}: ${game.resources[key]} of 100`} max={100} value={game.resources[key]} className="mt-2 h-2 w-full accent-[#5c9d8a]"/>}</article>)}</section>
-    <section className="rounded-xl border border-[#e6d4bc] bg-white/80 p-3"><header className="flex items-center justify-between"><h3 className="text-xs font-black">Working structures</h3><span className="text-[9px] font-bold text-[#827378]">{game.buildings.length} installed</span></header><ul className="mt-2 space-y-1.5">{(Object.keys(buildingNames) as (keyof typeof buildingNames)[]).map((type) => <li key={type} className="flex items-center justify-between rounded-lg bg-[#f5ecdf] px-3 py-2 text-[11px]"><span className="font-semibold">{buildingNames[type]}</span><strong>{buildingCounts[type]}</strong></li>)}</ul></section>
-    <section className="grid grid-cols-2 gap-2"><InventoryStat label="Life support" value={game.lifeSupport === 'stable' ? 'Stable' : game.lifeSupport === 'risk' ? 'At risk' : 'Critical'}/><InventoryStat label="Exposure level" value={`${game.educationalRisk} / 100`}/><InventoryStat label="Crop" value={game.crop.active ? `${game.crop.growth}% · ${game.crop.health}% health` : game.crop.harvested ? 'Harvested' : 'Not planted'}/><InventoryStat label="Rover position" value={`${Math.round(game.mapPosition.x)}, ${Math.round(game.mapPosition.y)}`}/></section>
+    <section className="rounded-xl border border-[#e6d4bc] bg-white/80 p-3"><header className="flex items-center justify-between"><h3 className="text-xs font-black">Working structures</h3><span className="text-[9px] font-bold text-[#827378]">{game.buildings.length} installed</span></header><ul className="mt-2 space-y-1.5">{(Object.keys(buildingNames) as (keyof typeof buildingNames)[]).map((type) => <li key={type} className="flex items-center justify-between rounded-lg bg-[#f5ecdf] px-3 py-2 text-[11px]"><span className="font-semibold">{BUILDING_ICON[type]} {buildingNames[type]}</span><strong>{buildingCounts[type]}</strong></li>)}</ul></section>
+    <section className="grid grid-cols-2 gap-2"><InventoryStat label="Life support" value={game.lifeSupport === 'stable' ? 'Stable' : game.lifeSupport === 'risk' ? 'At risk' : 'Critical'}/><InventoryStat label="Exposure level" value={`${game.educationalRisk} / 100`}/><InventoryStat label="Crop" value={game.crop.active ? `${game.crop.growth}% · ${game.crop.health}% health` : game.crop.harvested ? 'Harvested' : 'Not planted'}/><InventoryStat label="Your position" value={`${Math.round(game.mapPosition.x)}, ${Math.round(game.mapPosition.y)}`}/></section>
     <p className="rounded-xl bg-[#eee5d6] p-3 text-[10px] leading-4 text-[#71656a]">Every sol, life support uses energy, water and food. Solar panels recharge energy; the greenhouse uses energy and water to care for the crop.</p>
-    <section className="rounded-xl border border-[#d9c5aa] bg-[#fbf0de] p-3"><h3 className="text-xs font-black text-[#483b53]">Supplies marked in the valley</h3><p className="mt-1 text-[10px] leading-4 text-[#71636a]">NOVA marked the cargo boxes the crew left outside the base. Walk to a marker and press E to collect them.</p><ul className="mt-2 space-y-1">{supplySites.map((site) => { const collected = (game.collectedSupplyIds ?? []).includes(site.id); const labels = { energy: 'energy', water: 'water', food: 'food', spareParts: 'spare parts', seeds: 'seeds' } as const; return <li key={site.id} className="flex items-center justify-between gap-2 rounded-lg bg-white/70 px-2.5 py-1.5 text-[10px]"><span className="font-bold text-[#514450]">{site.name}</span><span className={collected ? 'font-bold text-[#6a7e65]' : 'font-black text-[#4f795d]'}>{collected ? 'Collected' : `+${site.amount} ${labels[site.resource]}`}</span></li> })}</ul></section>
+    <section className="rounded-xl border border-[#d9c5aa] bg-[#fbf0de] p-3"><h3 className="text-xs font-black text-[#483b53]">Supplies marked in the valley</h3><p className="mt-1 text-[10px] leading-4 text-[#71636a]">NOVA marked boxes, ice and battery cells around the valley. Walk to one and press E to collect it. Each spot refills a few sols later.</p><ul className="mt-2 space-y-1">{supplySites.map((site) => { const readySol = supplyReadyOnSol(game, site.id); const collected = readySol > game.sol; const labels = { energy: 'energy', water: 'water', food: 'food', spareParts: 'spare parts', seeds: 'seeds' } as const; return <li key={site.id} className="flex items-center justify-between gap-2 rounded-lg bg-white/70 px-2.5 py-1.5 text-[10px]"><span className="font-bold text-[#514450]">{site.name}</span><span className={collected ? 'font-bold text-[#6a7e65]' : 'font-black text-[#4f795d]'}>{collected ? `Refills on sol ${readySol}` : `+${site.amount} ${labels[site.resource]}`}</span></li> })}</ul></section>
   </div>
 }
 
@@ -218,13 +255,13 @@ function CropPanel({ game, playerPosition, onAction }: { game: GameState; player
   const greenhouse = game.buildings.find((building) => building.type === 'greenhouse')
   const greenhousePlot = greenhouse ? marsPlots.find((plot) => plot.id === greenhouse.plotId) : undefined
   const nearGreenhouse = Boolean(greenhousePlot && isWithinInteractionRange(playerPosition, greenhousePlot, MARS_WORLD.interactionRange))
-  const canSow = !active && !game.crop.harvested && !game.crewBusy && !pendingEvent(game) && nearGreenhouse
+  const canSow = !active && game.resources.seeds >= 1 && !game.crewBusy && !pendingEvent(game) && nearGreenhouse
   const growthRate = GREENHOUSE_MODE[game.crop.mode].growth
   const remainingSols = growthRate ? Math.ceil((100 - game.crop.growth) / growthRate) : null
   const boostUsed = game.cropBoostedSol === game.sol
   const canBoost = active && !ready && !boostUsed && game.resources.energy >= GAME_CONFIG.cropBoost.energy && !pendingEvent(game) && !game.gameOver
   return <section aria-labelledby="crop-title" className="rounded-[1.4rem] border-2 border-white bg-[#f3f4d9] p-4 shadow-[0_8px_20px_#513a5a18]"><header className="flex items-start justify-between gap-2"><div><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#68805a]">Crop module</p><h2 id="crop-title" className="mt-1 text-lg font-black text-[#333651]">Greenhouse</h2></div><span className="grid size-10 place-items-center rounded-2xl bg-white/70 text-[#56815b]"><Sprout size={20}/></span></header>
-    {!greenhouse ? <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs leading-5 text-[#5c6659]">Build the greenhouse before you can plant.</p> : !active ? <div className="mt-3"><p className="text-xs leading-5 text-[#5c6659]">{game.crop.harvested ? 'You already harvested the only crop of this mission.' : 'No seeds are growing at the base yet.'}</p>{!game.crop.harvested && <div className="mt-2 rounded-xl border border-[#d9dfbd] bg-white/75 px-3 py-2 text-[10px] leading-4 text-[#56634f]">Estimated time from planting: <strong>5 sol closes in normal mode</strong> or 10 in saving mode, if there is enough water and energy. The button below closes each workday.</div>}{!game.crop.harvested && !nearGreenhouse && <p className="mt-2 rounded-lg bg-[#e9efd9] px-3 py-2 text-[10px] font-bold text-[#526a4b]">Walk to the greenhouse to plant.</p>}<button type="button" disabled={!canSow} onClick={() => onAction({ type: 'sow' })} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#548955] px-4 text-xs font-black text-white hover:bg-[#3f7548] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#334858] disabled:cursor-not-allowed disabled:bg-[#aaa99b]">Plant · preview</button>{game.crewBusy && <p className="mt-1 text-[10px] font-semibold text-[#826843]">The crew finishes its task when the sol advances.</p>}</div> : <><div className="mt-3 grid grid-cols-2 gap-2"><CropMetric label="Growth" value={`${game.crop.growth}%`}/><CropMetric label="Health" value={`${game.crop.health}%`}/></div><progress aria-label={`Crop growth: ${game.crop.growth} percent`} max={100} value={game.crop.growth} className="mt-3 h-3 w-full overflow-hidden rounded-full accent-[#58a162]"/><p className="mt-1 text-[10px] font-semibold text-[#5c6659]">Current mode: {modeLabel(game.crop.mode)}. Changing it costs nothing right now.</p><div className="mt-2 rounded-xl border border-[#d9dfbd] bg-white/75 px-3 py-2 text-[10px] leading-4 text-[#56634f]">{ready ? 'Crop ready to harvest.' : remainingSols === null ? 'Time left: paused while the greenhouse is off.' : `Estimated time: ${remainingSols} sol ${remainingSols === 1 ? 'close' : 'closes'} in ${modeLabel(game.crop.mode).toLowerCase()} mode, if there is water and energy.`}</div><div className="mt-3 grid grid-cols-3 gap-1.5">{(['normal','saving','off'] as const).map((mode) => <button key={mode} type="button" disabled={game.crop.mode === mode || Boolean(pendingEvent(game)) || game.gameOver} onClick={() => onAction({ type: 'setMode', mode })} className={`min-h-10 rounded-xl border px-2 text-[10px] font-black focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-[#38455b] disabled:cursor-not-allowed disabled:opacity-55 ${game.crop.mode === mode ? 'border-[#446f4b] bg-[#4d8054] text-white' : 'border-[#c6d2b5] bg-white/80 text-[#4e5f50] hover:bg-white'}`}>{modeLabel(mode)}</button>)}</div><div className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-[10px] leading-4 text-[#5c6659]">{modeEffects(game.crop.mode)}</div>{active && !ready && <button type="button" disabled={!canBoost} onClick={() => onAction({ type: 'accelerateCrop' })} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#e1b956] bg-[#fff0bf] px-3 text-[11px] font-black text-[#70501f] hover:bg-[#ffe8a0] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#493550] disabled:cursor-not-allowed disabled:bg-[#e7e2d0] disabled:text-[#827c70]"><Zap size={15}/>{boostUsed ? 'Boost used this sol' : `Boost +${GAME_CONFIG.cropBoost.growth}% · −${GAME_CONFIG.cropBoost.energy} energy`}</button>}{active && !ready && !boostUsed && game.resources.energy < GAME_CONFIG.cropBoost.energy && <p className="mt-1 text-[10px] font-semibold text-[#89674d]">You need {GAME_CONFIG.cropBoost.energy} energy to boost; the second panel makes extra energy each time a sol closes.</p>}{ready && !nearGreenhouse && <p className="mt-2 rounded-lg bg-[#e9efd9] px-3 py-2 text-[10px] font-bold text-[#526a4b]">Walk to the greenhouse to harvest.</p>}{ready && <button type="button" disabled={game.crewBusy || Boolean(pendingEvent(game)) || !nearGreenhouse} onClick={() => onAction({ type: 'harvest' })} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#d97741] px-4 text-xs font-black text-white hover:bg-[#bd6135] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#493550] disabled:cursor-not-allowed disabled:opacity-60"><Leaf size={16}/>Harvest · preview</button>}</>}
+    {!greenhouse ? <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs leading-5 text-[#5c6659]">Build the greenhouse before you can plant.</p> : !active ? <div className="mt-3"><p className="text-xs leading-5 text-[#5c6659]">{game.crop.harvested ? (game.resources.seeds >= 1 ? 'Harvest done! You have a seed: plant again for more food 🌱' : 'Harvest done! Find a seed case to plant again 🌱') : 'No seeds are growing at the base yet.'}</p>{<div className="mt-2 rounded-xl border border-[#d9dfbd] bg-white/75 px-3 py-2 text-[10px] leading-4 text-[#56634f]">Estimated time from planting: <strong>5 sol closes in normal mode</strong> or 10 in saving mode, if there is enough water and energy. The button below closes each workday.</div>}{!nearGreenhouse && <p className="mt-2 rounded-lg bg-[#e9efd9] px-3 py-2 text-[10px] font-bold text-[#526a4b]">Walk to the greenhouse to plant.</p>}<button type="button" disabled={!canSow} onClick={() => onAction({ type: 'sow' })} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#548955] px-4 text-xs font-black text-white hover:bg-[#3f7548] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#334858] disabled:cursor-not-allowed disabled:bg-[#aaa99b]">Plant · preview</button>{game.crewBusy && <p className="mt-1 text-[10px] font-semibold text-[#826843]">The crew finishes its task when the sol advances.</p>}</div> : <><div className="mt-3 flex items-center gap-3 rounded-2xl bg-[#e9f3dc] px-3 py-2"><span aria-hidden="true" className="text-5xl">{game.crop.growth >= 100 ? '🥬' : game.crop.growth >= 67 ? '🪴' : game.crop.growth >= 34 ? '🌿' : '🌱'}</span><p className="text-sm font-black text-[#3d5a3f]">{game.crop.growth >= 100 ? 'Ready to harvest!' : game.crop.growth >= 67 ? 'Almost ready!' : game.crop.growth >= 34 ? 'Leaves are growing' : 'A tiny sprout'}<span className="block text-xs font-semibold text-[#5c6659]">It grows when each sol ends. Sleep to make time pass.</span></p></div><div className="mt-3 grid grid-cols-2 gap-2"><CropMetric label="Growth" value={`${game.crop.growth}%`}/><CropMetric label="Health" value={`${game.crop.health}%`}/></div><progress aria-label={`Crop growth: ${game.crop.growth} percent`} max={100} value={game.crop.growth} className="mt-3 h-3 w-full overflow-hidden rounded-full accent-[#58a162]"/><p className="mt-1 text-[10px] font-semibold text-[#5c6659]">Current mode: {modeLabel(game.crop.mode)}. Changing it costs nothing right now.</p><div className="mt-2 rounded-xl border border-[#d9dfbd] bg-white/75 px-3 py-2 text-[10px] leading-4 text-[#56634f]">{ready ? 'Crop ready to harvest.' : remainingSols === null ? 'Time left: paused while the greenhouse is off.' : `Estimated time: ${remainingSols} sol ${remainingSols === 1 ? 'close' : 'closes'} in ${modeLabel(game.crop.mode).toLowerCase()} mode, if there is water and energy.`}</div><div className="mt-3 grid grid-cols-3 gap-1.5">{(['normal','saving','off'] as const).map((mode) => <button key={mode} type="button" disabled={game.crop.mode === mode || Boolean(pendingEvent(game)) || game.gameOver} onClick={() => onAction({ type: 'setMode', mode })} className={`min-h-10 rounded-xl border px-2 text-[10px] font-black focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-[#38455b] disabled:cursor-not-allowed disabled:opacity-55 ${game.crop.mode === mode ? 'border-[#446f4b] bg-[#4d8054] text-white' : 'border-[#c6d2b5] bg-white/80 text-[#4e5f50] hover:bg-white'}`}>{modeLabel(mode)}</button>)}</div><div className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-[10px] leading-4 text-[#5c6659]">{modeEffects(game.crop.mode)}</div>{active && !ready && <button type="button" disabled={!canBoost} onClick={() => onAction({ type: 'accelerateCrop' })} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#e1b956] bg-[#fff0bf] px-3 text-[11px] font-black text-[#70501f] hover:bg-[#ffe8a0] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#493550] disabled:cursor-not-allowed disabled:bg-[#e7e2d0] disabled:text-[#827c70]"><Zap size={15}/>{boostUsed ? 'Boost used this sol' : `Boost +${GAME_CONFIG.cropBoost.growth}% · −${GAME_CONFIG.cropBoost.energy} energy`}</button>}{active && !ready && !boostUsed && game.resources.energy < GAME_CONFIG.cropBoost.energy && <p className="mt-1 text-[10px] font-semibold text-[#89674d]">You need {GAME_CONFIG.cropBoost.energy} energy to boost; the second panel makes extra energy each time a sol closes.</p>}{ready && !nearGreenhouse && <p className="mt-2 rounded-lg bg-[#e9efd9] px-3 py-2 text-[10px] font-bold text-[#526a4b]">Walk to the greenhouse to harvest.</p>}{ready && <button type="button" disabled={game.crewBusy || Boolean(pendingEvent(game)) || !nearGreenhouse} onClick={() => onAction({ type: 'harvest' })} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#d97741] px-4 text-xs font-black text-white hover:bg-[#bd6135] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#493550] disabled:cursor-not-allowed disabled:opacity-60"><Leaf size={16}/>Harvest · preview</button>}</>}
   </section>
 }
 
@@ -248,7 +285,8 @@ function DecisionPreviewModal({ game, command, preview, onCancel, onConfirm }: {
 
 // Owns the once-per-second clock so only this bar re-renders every second,
 // not the whole game screen and map.
-function SolClock({ solStartedAt, hasPendingEvent, gameOver }: { solStartedAt: number | null; hasPendingEvent: boolean; gameOver: boolean }) {
+function SolClock({ solStartedAt, hasPendingEvent, gameOver, scenarioId }: { solStartedAt: number | null; hasPendingEvent: boolean; gameOver: boolean; scenarioId: ScenarioId }) {
+  const solSeconds = solSecondsFor(scenarioId)
   const dispatch = useGameStore((state) => state.dispatch)
   const [clockNow, setClockNow] = useState(() => Date.now())
   useEffect(() => {
@@ -257,20 +295,20 @@ function SolClock({ solStartedAt, hasPendingEvent, gameOver }: { solStartedAt: n
       const now = Date.now()
       setClockNow(now)
       const currentGame = useGameStore.getState().game
-      if (!currentGame || currentGame.gameOver || now - solStartedAt < GAME_CONFIG.solDurationSeconds * 1000) return
+      if (!currentGame || currentGame.gameOver || now - solStartedAt < solSeconds * 1000) return
       if (pendingEvent(currentGame)) return
       dispatch({ type: 'advanceTimed' })
     }
     updateClock()
     const timer = window.setInterval(updateClock, 1000)
     return () => window.clearInterval(timer)
-  }, [dispatch, gameOver, solStartedAt])
+  }, [dispatch, gameOver, solStartedAt, solSeconds])
   const elapsedSeconds = solStartedAt === null ? 0 : Math.max(0, Math.floor((clockNow - solStartedAt) / 1000))
-  const remainingSeconds = Math.max(0, GAME_CONFIG.solDurationSeconds - elapsedSeconds)
+  const remainingSeconds = Math.max(0, solSeconds - elapsedSeconds)
   const clockLabel = hasPendingEvent ? 'Resolve the alert to close the sol' : remainingSeconds === 0 ? 'The workday is ready to close' : `Auto-close in ${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`
-  return <section aria-label="Sol duration" className="pointer-events-none absolute left-1/2 top-[62px] z-30 w-[min(370px,calc(100vw-470px))] -translate-x-1/2 rounded-xl border border-white/30 bg-[#302b48]/90 px-3 py-2 text-white shadow-lg backdrop-blur-md">
-    <div className="flex items-center justify-between gap-3 text-[9px] font-black"><span>Workday · 6 minutes</span><span>{clockLabel}</span></div>
-    <progress aria-label={`${Math.min(elapsedSeconds, GAME_CONFIG.solDurationSeconds)} of ${GAME_CONFIG.solDurationSeconds} seconds of the sol`} max={GAME_CONFIG.solDurationSeconds} value={Math.min(elapsedSeconds, GAME_CONFIG.solDurationSeconds)} className="mt-1.5 h-2 w-full overflow-hidden rounded-full accent-[#ffd37b]"/>
+  return <section aria-label="Sol duration" className="pointer-events-none absolute left-1/2 top-[80px] z-30 w-[min(370px,calc(100vw-470px))] -translate-x-1/2 rounded-xl border border-white/30 bg-[#302b48]/90 px-3 py-2 text-white shadow-lg backdrop-blur-md">
+    <div className="flex items-center justify-between gap-3 text-[9px] font-black"><span>{`Workday · ${Math.round(solSeconds / 6) / 10} min`}</span><span>{clockLabel}</span></div>
+    <progress aria-label={`${Math.min(elapsedSeconds, solSeconds)} of ${solSeconds} seconds of the sol`} max={solSeconds} value={Math.min(elapsedSeconds, solSeconds)} className="mt-1.5 h-2 w-full overflow-hidden rounded-full accent-[#ffd37b]"/>
     <p className="mt-1 text-center text-[8px] font-semibold text-white/65">Ends on its own · advancing now costs {GAME_CONFIG.fastForwardEnergyCost} ⚡</p>
   </section>
 }

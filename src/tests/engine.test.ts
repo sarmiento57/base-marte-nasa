@@ -156,19 +156,21 @@ describe('closed simulation rules', () => {
     expect(result.reason).toMatch(/10.*energy/i)
   })
 
-  it('collects nearby expedition supplies once and records the crew task', () => {
+  it('collects nearby supplies without using the crew task and refills the spot a few sols later', () => {
     const state: GameState = { ...createInitialGame(), mapPosition: { x: 1110, y: 820 } }
     const collected = dispatchGameCommand(state, { type: 'collectSupply', siteId: 'battery-ridge' })
     expect(collected.ok).toBe(true)
     expect(collected.state.resources.energy).toBe(68)
-    expect(collected.state.collectedSupplyIds).toEqual(['battery-ridge'])
-    expect(collected.state).toMatchObject({ crewBusy: true, crewTask: 'collect' })
+    expect(collected.state.supplyReadySol).toEqual({ 'battery-ridge': 4 })
+    expect(collected.state).toMatchObject({ crewBusy: false, suppliesCollected: 1 })
     expect(collected.state.log.at(-1)?.resourceDeltas).toEqual({ energy: 20 })
 
-    const nextSol = dispatchGameCommand({ ...collected.state, crewBusy: false, crewTask: undefined }, { type: 'advanceTimed' }).state
-    const duplicate = dispatchGameCommand(nextSol, { type: 'collectSupply', siteId: 'battery-ridge' })
-    expect(duplicate.ok).toBe(false)
-    expect(duplicate.state.resources.energy).toBe(nextSol.resources.energy)
+    const nextSol = dispatchGameCommand(collected.state, { type: 'advanceTimed' }).state
+    const tooSoon = dispatchGameCommand(nextSol, { type: 'collectSupply', siteId: 'battery-ridge' })
+    expect(tooSoon.ok).toBe(false)
+    expect(tooSoon.reason).toMatch(/refills on sol 4/)
+    const refilled = dispatchGameCommand({ ...nextSol, sol: 4 }, { type: 'collectSupply', siteId: 'battery-ridge' })
+    expect(refilled.ok).toBe(true)
   })
 
   it('does not allow collecting supplies from across the map or inventing a cache', () => {
@@ -190,22 +192,27 @@ describe('closed simulation rules', () => {
     expect(result.state.log.at(-1)?.resourceDeltas).toEqual({ energy: 5 })
   })
 
-  it('uses the selected rule that one critical support-life closure ends the mission', () => {
+  it('gives an emergency alert instead of ending the mission when life support runs out', () => {
     const state = { ...createInitialGame(), buildings: [], resources: { energy: 0, water: 60, food: 22, spareParts: 4, seeds: 1 } }
-    const result = dispatchGameCommand(state, { type: 'advanceTimed' })
-    expect(result.state.gameOver).toBe(true)
-    expect(result.state.endReason).toBe('lifeSupport')
+    const closed = dispatchGameCommand(state, { type: 'advanceTimed' }).state
+    expect(closed).toMatchObject({ gameOver: false, emergency: ['energy'], lifeSupport: 'critical' })
+    const expired = dispatchGameCommand(closed, { type: 'expireEmergency' }).state
+    expect(expired).toMatchObject({ gameOver: true, endReason: 'lifeSupport' })
+
+    const refilled = dispatchGameCommand({ ...closed, mapPosition: { x: 1200, y: 820 } }, { type: 'collectSupply', siteId: 'battery-ridge' }).state
+    expect(refilled.emergency).toBeUndefined()
+    expect(dispatchGameCommand(refilled, { type: 'expireEmergency' }).state.gameOver).toBe(false)
   })
 
   it('reproduces winning route A (storm savings)', () => {
     const state = runRoute('A')
-    expect(state).toMatchObject({ sol: 8, gameOver: true, won: true, endReason: 'win', resources: { energy: 15, water: 18, food: 33 }, crop: { growth: 100 } })
+    expect(state).toMatchObject({ sol: 8, gameOver: true, won: true, endReason: 'win', resources: { energy: 15, water: 18, food: 33 }, crop: { harvested: true, active: false } })
     expect(state.solsCompleted).toBe(8)
   })
 
   it('reproduces winning route D (second solar panel)', () => {
     const state = runRoute('D')
-    expect(state).toMatchObject({ sol: 8, gameOver: true, won: true, endReason: 'win', resources: { energy: 43, water: 19, food: 33 }, crop: { growth: 100 } })
+    expect(state).toMatchObject({ sol: 8, gameOver: true, won: true, endReason: 'win', resources: { energy: 43, water: 19, food: 33 }, crop: { harvested: true, active: false } })
   })
 
   it('reproduces losing route B (crew exposed) and route C (life support)', () => {

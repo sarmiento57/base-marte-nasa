@@ -30,7 +30,7 @@ export const visitingAstronauts: readonly VisitingAstronaut[] = [
     ],
   },
   {
-    id: 'naomi', name: 'Naomi', role: 'rover pilot', x: 3660, y: 2220, suit: '#7eaa72', visor: '#80dfe6',
+    id: 'naomi', name: 'Naomi', role: 'rover pilot', x: 3560, y: 2300, suit: '#7eaa72', visor: '#80dfe6',
     dialogue: [
       'I left route markers so nobody gets lost in the dunes.',
       'I found parts next to the old rover. I marked them on the map to check later.',
@@ -70,6 +70,13 @@ export const visitingAstronauts: readonly VisitingAstronaut[] = [
     ],
   },
 ]
+
+/** The visitor's line for this sol, without the name (shown in a bubble over their head). */
+export function visitorLine(visitorId: string, sol: number): string {
+  const visitor = visitingAstronauts.find((item) => item.id === visitorId)
+  if (!visitor) return 'Hello! Stay safe out there.'
+  return visitor.dialogue[Math.abs(Math.trunc(sol) - 1) % visitor.dialogue.length]
+}
 
 export function getVisitorDialogue(visitorId: string, sol: number): string {
   const visitor = visitingAstronauts.find((item) => item.id === visitorId)

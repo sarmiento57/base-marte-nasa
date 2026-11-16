@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { pendingEvent } from '../../engine/events'
-import { GAME_CONFIG } from '../../engine/config'
 import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 
 export function NovaChatter({ enabled, onOpen }: { enabled: boolean; onOpen: () => void }) {
@@ -53,7 +52,9 @@ function getRandomSuggestion(game: NonNullable<ReturnType<typeof useGameStore.ge
     'Shall we explore the southern dunes? Click the ground and I will follow you.',
     'Open the inventory whenever you want to check spare parts and seeds.',
     'You can select a free plot and walk to it before building.',
-    'Check the mission objectives to plan this sol.',
+    'Check the mission chapters to plan this sol.',
+    'Rocks and crater rims block the way, and soft dunes slow you down. Go around them!',
+    'Ice deposits and battery cells refill a few sols after you collect them.',
     'In NASA Science you can explore the solar record that inspired the mission preparations.',
   ]
   if (game.buildings.some((building) => building.type === 'greenhouse') && game.crop.active && !game.crop.harvested) {
@@ -61,7 +62,7 @@ function getRandomSuggestion(game: NonNullable<ReturnType<typeof useGameStore.ge
   } else if (game.buildings.some((building) => building.type === 'greenhouse') && !game.crop.harvested) {
     suggestions.push('Go to the greenhouse and open Crop to see the planting options.')
   } else {
-    suggestions.push('The workshop lets you set up a greenhouse or a solar panel on a free plot.')
+    suggestions.push('The workshop can build a greenhouse, a rover garage, a water extractor, a storm bunker or a solar panel.')
   }
   return suggestions[Math.floor(Math.random() * suggestions.length)]
 }
@@ -92,15 +93,16 @@ function getNovaMessage(game: ReturnType<typeof useGameStore.getState>['game'], 
   if (!game) return { text: 'When the mission starts, I will help you get to know the base and look after the crew.', priority: 'normal' }
   const event = pendingEvent(game)
   if (event?.kind === 'dust') return { text: 'Dust storm! The panels make less energy for two sols. Saving mode uses less, but the crop grows more slowly.', priority: 'urgent' }
-  if (event?.kind === 'solar') return { text: game.resources.energy < GAME_CONFIG.shelterCost ? 'Solar alert! There is not enough energy to shelter the crew. If time runs out, the exposure level will rise 60 points.' : 'Solar alert! Sheltering costs 6 energy and keeps the crew busy this sol. The crop can keep growing if resources remain.', priority: 'urgent' }
-  if (game.lifeSupport === 'critical') return { text: `${game.lifeSupportReason} The mission is over. Check the report to see which reserve ran out.`, priority: 'urgent' }
-  if (game.resources.energy < 20 || game.resources.water < 10 || game.resources.food < 10) return { text: `${game.lifeSupportReason} Life support comes before the crop. Check the preview before each advance.`, priority: 'urgent' }
-  if (game.crewBusy) return { text: 'The crew already did a task this sol. You can change the crop mode and then check the changes before closing the sol.', priority: 'normal' }
+  if (event?.kind === 'solar') return { text: 'Solar storm! Follow the arrow to a safe zone: the habitat (6 ⚡), a storm bunker (3 ⚡) or the lava tube cave (free).', priority: 'urgent' }
+  if (game.emergency?.length) return { text: `We ran out of ${game.emergency.join(' and ')}! Follow the arrow to a supply and refill it before the timer ends.`, priority: 'urgent' }
+  if (game.gameOver) return { text: game.won ? 'We did it! Print your Junior Astronaut certificate.' : 'A rescue ship is coming. Read my tip and try again!', priority: 'normal' }
+  if (game.resources.energy < 20 || game.resources.water < 10 || game.resources.food < 10) return { text: `${game.lifeSupportReason} Walking uses a little ⚡ 💧 🍞. Grab a supply or sleep in the habitat when the panels need to recharge.`, priority: 'urgent' }
+  if (game.crewBusy) return { text: 'The crew is busy this sol. Sleep in the habitat to make time pass faster.', priority: 'normal' }
   if (!game.buildings.some((building) => building.type === 'greenhouse')) return { text: 'Find a free plot on the map and build a greenhouse. It costs 2 spare parts; it does not plant anything by itself.', priority: 'normal' }
-  if (!game.crop.active && !game.crop.harvested) return { text: 'The greenhouse is ready. Planting costs 25 energy, 10 water and one seed; check your reserves before confirming.', priority: 'normal' }
+  if (!game.crop.active) return { text: game.resources.seeds > 0 ? 'The greenhouse is ready. Planting costs 25 energy, 10 water and one seed.' : 'We need a seed to plant. Look for a seed case on the map.', priority: 'normal' }
   if (game.crop.active && !game.crop.harvested && game.crop.growth >= 100) return { text: `The crop reached ${game.crop.growth} %! Check its health: a healthy harvest can add 35 food, a weaker one adds 25.`, priority: 'normal' }
   if (game.crop.active && !game.crop.harvested) return { text: `The crop is at ${game.crop.growth} %. In ${game.crop.mode === 'normal' ? 'normal' : game.crop.mode === 'saving' ? 'saving' : 'off'} mode, growth and energy and water use change.`, priority: 'normal' }
-  return { text: 'Walk around the valley, check your reserves and plan your next action. Advancing the sol handles life support first and then the crop.', priority: 'normal' }
+  return { text: 'Follow the yellow arrow to your next goal. Press R next to the rover to drive faster!', priority: 'normal' }
 }
 
 function NovaFace() {

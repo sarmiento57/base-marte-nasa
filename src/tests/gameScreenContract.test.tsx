@@ -18,6 +18,14 @@ describe('Mars Base launch screen', () => {
     expect(markup).toContain('How to play')
   })
 
+  it('opens with a skippable loading screen over the camp', () => {
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain('role="dialog"')
+    expect(markup).toContain('Junior Astronaut Mission Trainer')
+    expect(markup).toContain('Did you know?')
+    expect(markup).toContain('Press any key or click to skip')
+  })
+
   it('keeps NOVA and the science section available from the opening screen', () => {
     const markup = renderToStaticMarkup(<App />)
     expect(markup).toContain('NOVA')

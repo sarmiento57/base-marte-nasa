@@ -1,7 +1,7 @@
 import { INITIAL_BUILDINGS, INITIAL_RESOURCES, GAME_CONFIG, SCENARIO_PRESETS, eventSolsForScenario } from './config'
-import type { GameState, ScenarioId } from './types'
+import type { GameState, MissionConditions, ScenarioId } from './types'
 
-export function createInitialGame(scenarioId: ScenarioId = 'standard'): GameState {
+export function createInitialGame(scenarioId: ScenarioId = 'standard', conditions?: MissionConditions): GameState {
   const scenario = SCENARIO_PRESETS[scenarioId]
   return {
     version: 1,
@@ -25,6 +25,10 @@ export function createInitialGame(scenarioId: ScenarioId = 'standard'): GameStat
     shelterUsed: false,
     mapPosition: { x: 980, y: 820 },
     cropBoostedSol: 0,
-    collectedSupplyIds: [],
+    supplyReadySol: {},
+    suppliesCollected: 0,
+    harvests: 0,
+    travel: { energy: 0, water: 0, food: 0 },
+    ...(conditions ? { conditions } : {}),
   }
 }
