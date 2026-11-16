@@ -11,20 +11,20 @@ export function ResourceStatus({ game, immersive = false }: { game: GameState; i
   if (immersive) {
     const emoji: Record<'energy' | 'water' | 'food', string> = { energy: '⚡', water: '💧', food: '🍞' }
     const bar: Record<'energy' | 'water' | 'food', string> = { energy: 'accent-amber-400', water: 'accent-sky-400', food: 'accent-emerald-400' }
-    return <section aria-label="Colony reserves" className="flex h-[64px] items-center gap-2 rounded-[1.3rem] border-2 border-white/50 bg-[#302b48]/92 px-2.5 shadow-[0_10px_32px_#20172d66] backdrop-blur-md">
+    return <section aria-label="Colony reserves" className="flex h-[56px] max-w-full items-center gap-1.5 overflow-x-auto rounded-[1.3rem] border-2 border-white/50 bg-[#302b48]/92 px-2 shadow-[0_10px_32px_#20172d66] backdrop-blur-md sm:h-[64px] sm:gap-2 sm:px-2.5">
       {resourceCards.map(({ key, label, cap = 100 }) => {
         const value = game.resources[key]
         const resource = key as 'energy' | 'water' | 'food'
         const danger = (key === 'energy' && value < 20) || (key === 'water' && value < 10) || (key === 'food' && value < 10)
         const empty = value <= 0
-        return <article key={key} title={label} className={`flex h-[50px] w-[150px] shrink-0 items-center gap-2 rounded-2xl border-2 px-2.5 ${empty ? 'animate-pulse border-[#ff6b5e] bg-[#8a2f3a] motion-reduce:animate-none' : danger ? 'border-[#ff9c79]/80 bg-[#793e48]/85' : 'border-white/15 bg-white/[.08]'}`}>
-          <span aria-hidden="true" className="text-2xl">{emoji[resource]}</span>
-          <div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-1"><span className="text-[11px] font-extrabold text-white/80">{label}</span><strong className={`text-lg font-black tabular-nums ${danger ? 'text-[#ffc0a5]' : 'text-white'}`}>{value}</strong></div><progress aria-label={`${label}: ${value} of ${cap}`} max={cap} value={value} className={`mt-0.5 h-2 w-full overflow-hidden rounded-full ${danger ? 'accent-[#ff906f]' : bar[resource]}`}/></div>
+        return <article key={key} title={label} className={`flex h-[44px] w-[94px] shrink-0 items-center gap-1.5 rounded-2xl border-2 px-2 sm:h-[50px] sm:w-[126px] sm:gap-2 sm:px-2.5 lg:w-[150px] ${empty ? 'animate-pulse border-[#ff6b5e] bg-[#8a2f3a] motion-reduce:animate-none' : danger ? 'border-[#ff9c79]/80 bg-[#793e48]/85' : 'border-white/15 bg-white/[.08]'}`}>
+          <span aria-hidden="true" className="text-lg sm:text-2xl">{emoji[resource]}</span>
+          <div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-1"><span className="hidden text-[11px] font-extrabold text-white/80 sm:inline">{label}</span><strong className={`text-sm font-black tabular-nums sm:text-lg ${danger ? 'text-[#ffc0a5]' : 'text-white'}`}>{value}</strong></div><progress aria-label={`${label}: ${value} of ${cap}`} max={cap} value={value} className={`mt-0.5 h-2 w-full overflow-hidden rounded-full ${danger ? 'accent-[#ff906f]' : bar[resource]}`}/></div>
         </article>
       })}
-      <article className="flex h-[50px] w-[150px] shrink-0 items-center justify-around rounded-2xl border-2 border-white/15 bg-white/[.08] px-2">
-        <span title="Spare parts" className="inline-flex items-center gap-1 text-base font-black text-white"><span aria-hidden="true">🔩</span>{game.resources.spareParts}<span className="sr-only">spare parts</span></span>
-        <span title="Seeds" className="inline-flex items-center gap-1 text-base font-black text-white"><span aria-hidden="true">🌱</span>{game.resources.seeds}<span className="sr-only">seeds</span></span>
+      <article className="flex h-[44px] w-[96px] shrink-0 items-center justify-around rounded-2xl border-2 border-white/15 bg-white/[.08] px-1.5 sm:h-[50px] sm:w-[126px] sm:px-2 lg:w-[150px]">
+        <span title="Spare parts" className="inline-flex items-center gap-1 text-sm font-black text-white sm:text-base"><span aria-hidden="true">🔩</span>{game.resources.spareParts}<span className="sr-only">spare parts</span></span>
+        <span title="Seeds" className="inline-flex items-center gap-1 text-sm font-black text-white sm:text-base"><span aria-hidden="true">🌱</span>{game.resources.seeds}<span className="sr-only">seeds</span></span>
       </article>
     </section>
   }

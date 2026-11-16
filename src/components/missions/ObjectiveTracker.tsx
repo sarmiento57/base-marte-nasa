@@ -6,7 +6,7 @@ export function ObjectiveTracker({ game }: { game: GameState }) {
   const objective = currentObjective(game)
   if (!objective) return null
   const steps = missionSteps(game)
-  return <section aria-label="Current mission goal" aria-live="polite" className={`pointer-events-auto absolute left-1/2 top-[128px] z-40 w-[min(520px,calc(100vw-560px))] min-w-[380px] -translate-x-1/2 rounded-2xl border-[3px] px-4 py-2.5 shadow-[0_8px_0_#2d244066] ${objective.urgent ? 'border-[#ff8c7a] bg-[#5b2b3b]/95 text-white' : 'border-white bg-[#fff6e3]/95 text-[#2f2a45]'}`}>
+  return <section aria-label="Current mission goal" aria-live="polite" className={`pointer-events-auto absolute left-1/2 top-[132px] z-40 w-[min(520px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border-[3px] px-4 py-2.5 shadow-[0_8px_0_#2d244066] sm:top-[128px] sm:w-[min(520px,calc(100vw-380px))] ${objective.urgent ? 'border-[#ff8c7a] bg-[#5b2b3b]/95 text-white' : 'border-white bg-[#fff6e3]/95 text-[#2f2a45]'}`}>
     <div className="flex items-center gap-3">
       <span aria-hidden="true" className={`grid size-12 shrink-0 place-items-center rounded-xl text-3xl ${objective.urgent ? 'animate-pulse bg-[#d25d45] motion-reduce:animate-none' : 'bg-[#ffd98a]'}`}>{objective.icon}</span>
       <div className="min-w-0 flex-1">

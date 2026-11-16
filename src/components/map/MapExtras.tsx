@@ -88,7 +88,7 @@ export function RidingRover({ x, y, facing }: { x: number; y: number; facing: nu
 }
 
 export function SafeZoneMarkers({ zones }: { zones: { id: string; name: string; position: WorldPosition; icon: string; cost: number }[] }) {
-  return <g aria-hidden="true">
+  return <g aria-hidden="true" pointerEvents="none">
     {zones.map((zone) => {
       const text = `${zone.icon} ${zone.cost ? `−${zone.cost} ⚡` : 'FREE'}`
       return <g key={zone.id} transform={`translate(${zone.position.x} ${zone.position.y - 260})`}>
@@ -111,7 +111,7 @@ export function ObjectiveGuide({ target, label, icon, urgent, camera, from }: { 
   const caption = `${icon} ${label}${meters > 25 ? ` · ${meters} m` : ''}`
   const pillWidth = Math.max(140, caption.length * 11.5 + 30)
   if (vx > margin && vx < viewWidth - margin && vy > margin && vy < viewHeight - margin) {
-    return <g transform={`translate(${vx} ${vy - 95})`} aria-hidden="true">
+    return <g transform={`translate(${vx} ${vy - 95})`} aria-hidden="true" pointerEvents="none">
       <g className="animate-[guide-bob_1s_ease-in-out_infinite] motion-reduce:animate-none">
         <path d="M-26-30h52v26h26L0 34-26-4h-26Z" fill={color} stroke="#2d2440" strokeWidth="6" strokeLinejoin="round" transform="translate(0 -6)"/>
         <rect x={-pillWidth / 2} y="-86" width={pillWidth} height="38" rx="19" fill="#2d2440" stroke={color} strokeWidth="4"/>
@@ -127,7 +127,7 @@ export function ObjectiveGuide({ target, label, icon, urgent, camera, from }: { 
   const ex = cx + dx * scale
   const ey = cy + dy * scale
   const angle = Math.atan2(dy, dx) * 180 / Math.PI
-  return <g aria-hidden="true">
+  return <g aria-hidden="true" pointerEvents="none">
     <g transform={`translate(${ex} ${ey}) rotate(${angle})`}>
       <g className="animate-[guide-push_0.9s_ease-in-out_infinite] motion-reduce:animate-none">
         <circle r="38" fill="#2d2440" stroke={color} strokeWidth="6"/>
@@ -176,7 +176,7 @@ export function CollectRing({ x, y, durationMs }: { x: number; y: number; durati
     const animation = ring.animate([{ strokeDashoffset: circumference }, { strokeDashoffset: 0 }], { duration: durationMs, fill: 'forwards' })
     return () => animation.cancel()
   }, [circumference, durationMs])
-  return <g transform={`translate(${x} ${y - 4})`} aria-hidden="true">
+  return <g transform={`translate(${x} ${y - 4})`} aria-hidden="true" pointerEvents="none">
     <circle r="70" fill="none" stroke="#2d2440" strokeWidth="18" opacity=".5"/>
     <circle ref={ref} r="70" fill="none" stroke="#9dffb0" strokeWidth="14" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference} transform="rotate(-90)"/>
     <text y="-96" textAnchor="middle" fill="#fff8e6" stroke="#2d2440" strokeWidth="6" paintOrder="stroke" fontSize="26" fontWeight="900">Collecting…</text>
@@ -194,7 +194,7 @@ export function BuildProgress({ x, y }: { x: number; y: number }) {
   }, [])
   const total = solSecondsFor(scenarioId) * 1000
   const progress = solStartedAt === null ? 0 : Math.max(0, Math.min(1, (now - solStartedAt) / total))
-  return <g transform={`translate(${x} ${y - 300})`} role="img" aria-label={`Building: ${Math.round(progress * 100)} percent`}>
+  return <g transform={`translate(${x} ${y - 300})`} role="img" aria-label={`Building: ${Math.round(progress * 100)} percent`} pointerEvents="none">
     <rect x="-170" y="-38" width="340" height="96" rx="26" fill="#2d2440" stroke="#ffd166" strokeWidth="5"/>
     <text x="-118" y="20" textAnchor="middle" fontSize="54" className="animate-[spin_2s_linear_infinite] [transform-box:fill-box] origin-center motion-reduce:animate-none">⚙️</text>
     <text x="35" y="0" textAnchor="middle" fill="#fff5dc" fontSize="26" fontWeight="900">Building…</text>

@@ -4,15 +4,15 @@ import type { GameState } from '../../engine/types'
 
 export function ShipInterior({ game, onExit, onSleep, sleepBlockedReason }: { game: GameState; onExit: () => void; onSleep: () => void; sleepBlockedReason: string | null }) {
   const sheltered = game.crewTask === 'shelter'
-  return <section role="dialog" aria-modal="true" aria-labelledby="ship-interior-title" className="fixed inset-0 z-[100] overflow-hidden bg-[#29273d] text-white">
+  return <section role="dialog" aria-modal="true" aria-labelledby="ship-interior-title" className="fixed inset-0 z-[100] overflow-y-auto bg-[#29273d] text-white">
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_20%,#59435c_0%,#39334d_52%,#25293c_100%)]"/>
-    <header className="relative z-10 flex h-[82px] items-center justify-between gap-5 border-b border-white/15 bg-[#302b46]/90 px-7 shadow-xl backdrop-blur-lg">
-      <div className="flex min-w-[290px] items-center gap-3"><span className="grid size-12 place-items-center rounded-2xl border-2 border-[#f8d3a5] bg-[#e4875f] text-[#392e49] shadow-lg"><ShieldCheck size={23}/></span><div><p className="text-[9px] font-black uppercase tracking-[.2em] text-[#f4c58e]">Mars Base · Ares Valley</p><h1 id="ship-interior-title" className="text-lg font-black">On board the habitat</h1></div></div>
+    <header className="relative z-10 flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-white/15 bg-[#302b46]/90 px-4 py-3 shadow-xl backdrop-blur-lg sm:px-7">
+      <div className="flex items-center gap-3"><span className="grid size-12 place-items-center rounded-2xl border-2 border-[#f8d3a5] bg-[#e4875f] text-[#392e49] shadow-lg"><ShieldCheck size={23}/></span><div><p className="text-[9px] font-black uppercase tracking-[.2em] text-[#f4c58e]">Mars Base · Ares Valley</p><h1 id="ship-interior-title" className="text-lg font-black">On board the habitat</h1></div></div>
       <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-black/20 px-4 py-2"><span className="text-[9px] font-black uppercase tracking-wider text-[#f5d4a3]">Mission logbook</span><span className="h-5 w-px bg-white/20"/><span className="text-sm font-black">Sol {String(game.sol).padStart(2, '0')} / {game.maxSols}</span><span className="h-5 w-px bg-white/20"/><span className="flex items-center gap-1.5 text-[10px] font-black"><HeartPulse size={15} className={game.lifeSupport === 'critical' ? 'text-[#ff9c82]' : 'text-[#a8efc5]'}/>{game.lifeSupport === 'stable' ? 'STABLE' : game.lifeSupport === 'risk' ? 'LOW RESERVES' : 'CRITICAL'}</span></div>
       <button type="button" onClick={onExit} aria-label="Leave the ship and return to the map" className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border-2 border-white/25 bg-[#e8835b] px-4 text-xs font-black text-[#392e49] shadow-lg transition-colors hover:bg-[#ffad75] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"><DoorOpen size={17}/> Back to the valley <X size={15}/></button>
     </header>
 
-    <div className="relative z-10 mx-auto grid h-[calc(100dvh-82px)] min-h-[700px] max-w-[1760px] grid-cols-[220px_minmax(640px,1fr)_220px] items-center gap-4 px-6 py-5">
+    <div className="relative z-10 mx-auto grid min-h-[calc(100dvh-76px)] max-w-[1760px] items-center gap-4 px-4 py-4 lg:grid-cols-[220px_minmax(0,1fr)_220px] lg:px-6 lg:py-5">
       <aside aria-label="Colony readings" className="space-y-3">
         <Readout icon={<BatteryCharging size={17}/>} label="Energy" value={game.resources.energy} color="bg-[#f0c34f]"/>
         <Readout icon={<Droplets size={17}/>} label="Water" value={game.resources.water} color="bg-[#68c5e6]"/>
@@ -20,7 +20,7 @@ export function ShipInterior({ game, onExit, onSleep, sleepBlockedReason }: { ga
         <section className="rounded-2xl border border-white/15 bg-[#272a40]/90 p-4 shadow-xl"><h2 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] text-[#c7f1d9]"><Sprout size={15}/> Next workday</h2><p className="mt-2 text-[11px] font-bold leading-5 text-white/80">When the sol ends, the panels recharge energy and life support takes care of the crew.</p><p className="mt-2 text-[10px] font-extrabold text-[#f2c980]">{sheltered ? 'The hatch keeps the crew safe.' : 'The hatch is ready for the next trip.'}</p></section>
       </aside>
 
-      <main aria-label="View inside the ship" className="relative h-[min(78vh,760px)] min-h-[600px] overflow-hidden rounded-[2.4rem] border-[10px] border-[#d4c5ae] bg-[#485469] shadow-[0_35px_100px_#111322aa,inset_0_0_0_5px_#867d80]">
+      <main aria-label="View inside the ship" className="relative h-[min(64vh,720px)] min-h-[280px] overflow-hidden rounded-[2.4rem] border-[10px] border-[#d4c5ae] bg-[#485469] shadow-[0_35px_100px_#111322aa,inset_0_0_0_5px_#867d80]">
         <svg viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Cozy habitat interior with a big window onto the Martian valley, an astronaut and NOVA" className="absolute inset-0 size-full">
           <defs>
             <linearGradient id="cabin-wall" x2="0" y2="1"><stop stopColor="#536078"/><stop offset=".54" stopColor="#42465c"/><stop offset="1" stopColor="#302f46"/></linearGradient>
