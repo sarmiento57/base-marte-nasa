@@ -1,0 +1,10 @@
+{
+  "source": "NASA CCMC DONKI via api.nasa.gov (CME and GST endpoints)",
+  "note": "Archived summary used when the game is offline or the API limit is reached. Measured near Earth, not at Mars.",
+  "fetchedOn": "2026-11-16",
+  "startDate": "2026-10-17",
+  "endDate": "2026-11-16",
+  "cmeCount": 87,
+  "fastestCme": { "id": "2026-10-17T02:48:00-CME-001", "speedKmS": 1048 },
+  "strongestStorm": { "id": "2026-10-31T18:00:00-GST-001", "startTime": "2026-10-31T18:00Z", "maxKp": 6, "link": "https://ccmc.gsfc.nasa.gov/DONKI/view/GST/49348/-1" }
+}

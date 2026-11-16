@@ -15,3 +15,17 @@ export function moveToward(from: WorldPosition, target: WorldPosition, distance:
   const ratio = distance / remaining
   return { x: from.x + dx * ratio, y: from.y + dy * ratio }
 }
+
+export type MovementDirection = 'up' | 'down' | 'left' | 'right'
+
+// Keys are matched in lowercase so arrows ("ArrowUp" -> "arrowup") and WASD with Caps Lock both work.
+const movementKeys: Record<string, MovementDirection> = {
+  arrowup: 'up', w: 'up',
+  arrowdown: 'down', s: 'down',
+  arrowleft: 'left', a: 'left',
+  arrowright: 'right', d: 'right',
+}
+
+export function directionForKey(key: string): MovementDirection | undefined {
+  return movementKeys[key.toLowerCase()]
+}

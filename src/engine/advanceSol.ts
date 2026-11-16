@@ -1,11 +1,23 @@
-import { GAME_CONFIG, GREENHOUSE_MODE, RESOURCE_CAPACITY } from './config'
+import { COLD_NIGHT_C, COLD_NIGHT_EXTRA_FOOD, GAME_CONFIG, GREENHOUSE_MODE, RESOURCE_CAPACITY, WATER_EXTRACTOR_OUTPUT } from './config'
 import { evaluateMission } from './evaluateMission'
 import { eventForSol } from './events'
-import type { DecisionLog, GameState, ResourceName } from './types'
+import type { ClimateSol, DecisionLog, GameState, ResourceName } from './types'
 
 function clampResource(resource: ResourceName, value: number): number {
   const capacity = RESOURCE_CAPACITY[resource]
   return Math.max(0, capacity === undefined ? value : Math.min(capacity, value))
+}
+
+/** The archived NASA InSight sol used for this game sol (the week of data repeats). */
+export function climateForSol(state: GameState, sol: number): ClimateSol | undefined {
+  const climate = state.conditions?.climate
+  if (!climate?.length) return undefined
+  return climate[(Math.max(1, sol) - 1) % climate.length]
+}
+
+export function isColdNight(state: GameState, sol: number): boolean {
+  const climate = climateForSol(state, sol)
+  return Boolean(climate && climate.minC < COLD_NIGHT_C)
 }
 
 function addTurnLog(state: GameState, entry: DecisionLog): GameState {
@@ -34,10 +46,39 @@ export function advanceSol(state: GameState): GameState {
     kind: 'turn',
   })
 
+  const extractors = working.buildings.filter((building) => building.type === 'water' && building.operational).length
+  if (extractors) {
+    const beforeWater = working.resources.water
+    working = { ...working, resources: { ...working.resources, water: clampResource('water', beforeWater + extractors * WATER_EXTRACTOR_OUTPUT) } }
+    const gainedWater = working.resources.water - beforeWater
+    working = addTurnLog(working, {
+      sol,
+      action: 'Water extractor',
+      cost: '',
+      consequence: `The extractor melted underground ice into ${gainedWater} water.`,
+      resourceDeltas: { water: gainedWater },
+      kind: 'turn',
+    })
+  }
+
+  const climate = climateForSol(state, sol)
+  const coldNight = isColdNight(state, sol)
+  if (coldNight && climate) {
+    working = addTurnLog(working, {
+      sol,
+      action: 'Cold night',
+      cost: `−${COLD_NIGHT_EXTRA_FOOD} extra food`,
+      consequence: `NASA InSight measured ${Math.round(climate.minC)} °C at night on Mars sol ${climate.insightSol} (${climate.date}). Keeping warm takes more energy, so the crew eats ${COLD_NIGHT_EXTRA_FOOD} extra food.`,
+      resourceDeltas: {},
+      kind: 'turn',
+    })
+  }
+
   const supportDeltas: Partial<Record<'energy' | 'water' | 'food', number>> = {}
   const missed: string[] = []
+  const foodNeed = GAME_CONFIG.lifeSupport.food + (coldNight ? COLD_NIGHT_EXTRA_FOOD : 0)
   for (const resource of ['energy', 'water', 'food'] as const) {
-    const demand = GAME_CONFIG.lifeSupport[resource]
+    const demand = resource === 'food' ? foodNeed : GAME_CONFIG.lifeSupport[resource]
     const available = working.resources[resource]
     const covered = available >= demand
     const consumed = covered ? demand : available
@@ -48,7 +89,7 @@ export function advanceSol(state: GameState): GameState {
   working = addTurnLog(working, {
     sol,
     action: 'Life support',
-    cost: '−10 energy, −2 water and −3 food needed',
+    cost: `−${GAME_CONFIG.lifeSupport.energy} energy, −${GAME_CONFIG.lifeSupport.water} water and −${foodNeed} food needed`,
     consequence: missed.length ? `Not enough ${missed.map((resource) => ({ energy: 'energy', water: 'water', food: 'food' })[resource]).join(', ')} to cover all of life support.` : 'Life support kept the crew alive.',
     resourceDeltas: supportDeltas,
     kind: 'turn',
@@ -115,6 +156,7 @@ export function advanceSol(state: GameState): GameState {
     lifeSupportReason: reason,
     crewBusy: false,
     crewTask: undefined,
+    shelterZone: undefined,
     solsCompleted: sol,
   }
 

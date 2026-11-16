@@ -136,3 +136,35 @@
   .solar-alert-glow,
   .solar-alert-beacon { animation: none; }
 }
+
+@keyframes guide-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+
+@keyframes guide-push {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(10px); }
+}
+
+@keyframes night-fade {
+  0% { opacity: 0; }
+  20%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes confetti-fall {
+  0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(540deg); opacity: .7; }
+}
+
+@keyframes rocket-launch {
+  0% { transform: translateY(0); }
+  60% { transform: translateY(-40px); }
+  100% { transform: translateY(0); }
+}
+
+@media print {
+  body.printing-certificate #root { display: none; }
+  body.printing-certificate .mission-ending { position: static; background: #fff; color: #2f2a45; padding: 0; }
+}

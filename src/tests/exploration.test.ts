@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { isWithinInteractionRange, moveToward } from '../data/mars/movement'
+import { directionForKey, isWithinInteractionRange, moveToward } from '../data/mars/movement'
 import { dispatchGameCommand } from '../engine/actions'
 import { createInitialGame } from '../engine/createInitialGame'
 
 describe('free-roam movement', () => {
+  it('maps arrow keys and WASD (any case) to walking directions', () => {
+    expect(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].map(directionForKey)).toEqual(['up', 'down', 'left', 'right'])
+    expect(['w', 's', 'a', 'd'].map(directionForKey)).toEqual(['up', 'down', 'left', 'right'])
+    expect(['W', 'S', 'A', 'D'].map(directionForKey)).toEqual(['up', 'down', 'left', 'right'])
+    expect(directionForKey('e')).toBeUndefined()
+  })
+
   it('requires the astronaut to walk within 180 world units of a plot', () => {
     expect(isWithinInteractionRange({ x: 100, y: 100 }, { x: 280, y: 100 }, 180)).toBe(true)
     expect(isWithinInteractionRange({ x: 100, y: 100 }, { x: 281, y: 100 }, 180)).toBe(false)

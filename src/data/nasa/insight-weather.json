@@ -1,0 +1,14 @@
+{
+  "source": "NASA InSight Mars Weather Service API (api.nasa.gov/insight_weather), Elysium Planitia",
+  "note": "InSight stopped sending weather in 2020 and the mission ended in December 2022. The API still returns this last archived week, so the game labels it as historical data.",
+  "fetchedOn": "2026-11-16",
+  "sols": [
+    { "insightSol": 675, "date": "2020-10-19", "minC": -96.872, "avgC": -62.314, "maxC": -15.908 },
+    { "insightSol": 676, "date": "2020-10-20", "minC": -96.912, "avgC": -62.812, "maxC": -16.499 },
+    { "insightSol": 677, "date": "2020-10-21", "minC": -97.249, "avgC": -63.056, "maxC": -16.853 },
+    { "insightSol": 678, "date": "2020-10-22", "minC": -97.728, "avgC": -62.562, "maxC": -9.055 },
+    { "insightSol": 679, "date": "2020-10-23", "minC": -96.644, "avgC": -62.551, "maxC": -11.561 },
+    { "insightSol": 680, "date": "2020-10-24", "minC": -96.811, "avgC": -61.789, "maxC": -15.298 },
+    { "insightSol": 681, "date": "2020-10-25", "minC": -95.447, "avgC": -62.434, "maxC": -4.444 }
+  ]
+}

@@ -48,7 +48,7 @@ describe('exploration world and one game store', () => {
     })
   })
 
-  it('keeps the astronaut at the construction site until the sol closes', () => {
+  it('lets the astronaut keep exploring while the crew builds', () => {
     const initial = createInitialGame()
     const plot = marsPlots.find((item) => item.id === 'B1')!
     useGameStore.setState({ game: { ...initial, mapPosition: { x: plot.x, y: plot.y } } })
@@ -56,7 +56,8 @@ describe('exploration world and one game store', () => {
     const workPosition = useGameStore.getState().game?.mapPosition
     useGameStore.getState().moveAstronaut('right')
     useGameStore.getState().setAstronautPosition(plot.x + 500, plot.y)
-    expect(useGameStore.getState().game?.mapPosition).toEqual(workPosition)
+    expect(useGameStore.getState().game?.mapPosition).not.toEqual(workPosition)
+    expect(useGameStore.getState().game?.crewTask).toBe('build')
   })
 
   it('keeps the astronaut sheltered at the habitat until the sol closes', () => {
@@ -91,7 +92,7 @@ describe('exploration world and one game store', () => {
 
   it('shows only sources whose NASA CCMC records were checked', () => {
     expect(nasaSources.length).toBeGreaterThan(0)
-    expect(nasaSources.every((source) => source.verification === 'verified' && source.checkedOn === '2026-11-14')).toBe(true)
+    expect(nasaSources.every((source) => source.verification === 'verified' && /^2026-11-1[46]$/.test(source.checkedOn))).toBe(true)
   })
 
   it('cancels a store preview without changing the game and confirms only once', () => {

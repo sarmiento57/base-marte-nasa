@@ -10,9 +10,9 @@ export function buildMissionReport(state: GameState): MissionReport {
         ? 'The colony did not finish a harvest before the eight sols ended.'
         : `The colony harvested ${state.foodHarvested} food, kept life support out of critical state and ended with an exposure index of ${state.educationalRisk}.`
   const advice = state.endReason === 'lifeSupport'
-    ? 'Save energy, water and food for life support before spending resources on the greenhouse.'
+    ? 'Watch the ⚡ 💧 🍞 bars. When one gets low, follow the arrow to a supply before it reaches zero.'
     : state.endReason === 'crewExposed'
-      ? 'Keep at least 6 energy to shelter the crew when the solar alert arrives.'
+      ? 'When the solar storm comes, run to a safe zone. The lava tube cave is free; the habitat needs 6 energy.'
       : state.endReason === 'noHarvest'
         ? 'Build the greenhouse early, plant, and change the mode based on your reserves.'
         : 'Compare what the crop uses with your solar energy before each advance.'

@@ -1,12 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { BookOpen, House, Orbit, Radio, Trophy } from 'lucide-react'
 import { GameScreen } from './GameScreen'
 import { HomeScreen } from './HomeScreen'
 import { HowToScreen } from './HowToScreen'
 import { MissionReportScreen } from './MissionReportScreen'
 import { NovaAssistant } from '../components/nova/NovaAssistant'
+import { LoadingScreen } from '../components/shared/LoadingScreen'
 import { ScienceSources } from '../components/science/ScienceSources'
 import { useGameStore } from '../store/useGameStore'
+
+const BOOT_STEPS = ['Charging solar panels', 'Checking oxygen tanks', 'Waking up NOVA', 'Plotting the route to Ares Valley'] as const
 
 const screenTitles = { home: 'Camp', howto: 'How to play', game: 'Mission on Mars', science: 'NASA Science', report: 'Mission report' }
 
@@ -15,9 +18,14 @@ export default function App() {
   const game = useGameStore((state) => state.game)
   const setScreen = useGameStore((state) => state.setScreen)
   const restoreGame = useGameStore((state) => state.restoreGame)
+  const loadNasaConditions = useGameStore((state) => state.loadNasaConditions)
   useEffect(() => { restoreGame() }, [restoreGame])
+  // Reads live NASA data (DONKI space weather + InSight) once; the game falls back to an archived snapshot.
+  useEffect(() => { void loadNasaConditions() }, [loadNasaConditions])
+  const [booting, setBooting] = useState(true)
+  const bootScreen = booting && <LoadingScreen title="Mars Base" subtitle="Junior Astronaut Mission Trainer" steps={BOOT_STEPS} durationMs={2800} onDone={() => setBooting(false)}/>
 
-  if (screen === 'game') return <GameScreen />
+  if (screen === 'game') return <><GameScreen />{bootScreen}</>
 
   const navigate = (target: 'home' | 'howto' | 'game' | 'science' | 'report') => {
     if (target === 'report' && !game?.gameOver) return
@@ -44,5 +52,6 @@ export default function App() {
       {screen === 'report' && game?.gameOver && <MissionReportScreen game={game}/>}
     </main>
     <NovaAssistant/>
+    {bootScreen}
   </div>
 }

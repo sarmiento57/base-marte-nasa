@@ -111,3 +111,21 @@ No hace falta reinstalar dependencias si `node_modules` ya está preparado. En W
 - El mapa (`MarsMap.tsx`) se divide en `MarsMap` (lee el store) y `MarsMapScene`. Los manejadores que reciben los componentes memorizados son estables (`handlersRef`); si agregas otro, sigue ese patrón para no romper la memorización.
 - La posición del astronauta mientras camina vive en `livePosition`; el store la recibe cada 200 ms (`POSITION_PUBLISH_MS`) y al detenerse. Antes de despachar una acción que dependa de la distancia desde el mapa, llama a `stopWalking()` para publicar la posición exacta.
 - La nave misteriosa es narrativa del juego, no un dato de NASA. Su calendario y trayectoria están en `src/data/mars/livingWorld.ts` y se animan con la Web Animations API (no usar `animateTransform`, que cuenta desde la carga de la página).
+
+## Actualización 15 de noviembre de 2026 (noche) — rama `feature/keys`
+
+Decisiones del equipo aplicadas (cambian reglas cerradas de V3):
+
+- **BM-06:** quedarse sin energía, agua o comida ya no termina la misión al instante. Se marca `emergency` y el jugador tiene 60 s (`EMERGENCY_SECONDS`) para recargar; `expireEmergency` la termina si sigue en 0. Al final del sol 8, cualquier recurso vital en 0 cuenta como derrota por soporte vital.
+- **Tiempo:** `SOL_SECONDS` por escenario (180 / 210 / 150 s). Dormir (`sleep`) solo en el hábitat o refugiado; cierra el sol sin la tarifa de adelanto.
+- **Construcción:** ya no bloquea el movimiento; solo el refugio solar lo bloquea.
+- **Viaje:** `travel` descuenta recursos por distancia (`TRAVEL_COST`). El store lo aplica en `setAstronautPosition`.
+- **Cultivo:** después de cosechar el cultivo se reinicia (`freshCrop(true)`) y se puede sembrar otra vez con una semilla.
+- **Suministros:** se rellenan (`supplyReadySol`, `refillSols`) y ya no ocupan la tarea de la tripulación.
+- **Edificios:** `water`, `garage`, `bunker` (`BUILDING_COST/EFFECT/LIMIT`). El garaje crea `rover`.
+- **Zonas seguras:** `engine/safeZones.ts` (hábitat, cueva de lava, búnker) con `SHELTER_COST`.
+- **Terreno:** `data/mars/terrain.ts` define cráteres, rocas y dunas una sola vez para dibujar y para colisiones. Si mueves algo, corre la prueba que revisa que ningún punto importante quede dentro de un obstáculo.
+- **Objetivos:** `engine/objectives.ts` (`currentObjective`, `missionSteps`) alimenta el rastreador y la flecha guía.
+- **Datos NASA:** `data/nasa/nasaApi.ts` lee DONKI GST/CME/FLR e InSight, guarda en caché 6 h y usa `insight-weather.json` y `space-weather-snapshot.json` si falla. Al iniciar una misión se copian a `game.conditions` para que el motor siga siendo determinista. La clave va en `VITE_NASA_API_KEY` (`.env.example`).
+
+Las rutas A–D de V3 siguen dando los mismos recursos y resultados; solo cambió que el cultivo queda reiniciado después de cosechar.
