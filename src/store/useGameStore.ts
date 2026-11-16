@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { dispatchGameCommand } from '../engine/actions'
 import { createInitialGame } from '../engine/createInitialGame'
 import { previewDecision } from '../engine/previewDecision'
-import { BUILDING_LABEL, SCENARIO_PRESETS, SHELTER_WINDOW_SECONDS } from '../engine/config'
+import { BUILDING_LABEL, EMERGENCY_SECONDS, SCENARIO_PRESETS, SHELTER_WINDOW_SECONDS, solSecondsFor } from '../engine/config'
+import { pendingEvent } from '../engine/events'
 import type { GameCommand, GameState, DecisionPreview, MissionConditions, ResourceName, ScenarioId } from '../engine/types'
 import { MARS_WORLD } from '../data/mars/world'
 import { supplySites } from '../data/mars/supplies'
@@ -24,10 +25,20 @@ interface GameStore {
   nasaStatus: 'archived' | 'loading' | 'live' | 'offline'
   /** Real time when the empty-life-support alert started; the mission ends 60 s later if not refilled. */
   emergencyStartedAt: number | null
+  emergencyRemainingMs: number | null
   floatingTexts: FloatingText[]
   loadNasaConditions: () => Promise<void>
   dropFloatingText: (id: number) => void
   solStartedAt: number | null
+  solRemainingMs: number | null
+  solarEventId: string | null
+  solarDeadlineAt: number | null
+  solarRemainingMs: number | null
+  timersPaused: boolean
+  endingDismissed: boolean
+  ensureSolarTimer: (eventId: string, windowSeconds: number) => void
+  setTimersPaused: (paused: boolean) => void
+  dismissEnding: () => void
   screen: GameScreen
   /** Screen shown before the current one, so the mission knows whether to play its landing screen. */
   previousScreen: GameScreen
@@ -61,7 +72,7 @@ interface GameStore {
   confirmPreview: () => void
   dispatch: (command: GameCommand) => boolean
   moveAstronaut: (direction: 'up' | 'down' | 'left' | 'right') => void
-  setAstronautPosition: (x: number, y: number) => void
+  setAstronautPosition: (x: number, y: number, persistNow?: boolean) => void
   clearMessage: () => void
 }
 
@@ -114,6 +125,72 @@ function emergencyClock(before: GameState | null, after: GameState, startedAt: n
   return before?.emergency?.length && startedAt !== null ? startedAt : Date.now()
 }
 
+type TimerFields = Pick<GameStore, 'game' | 'solStartedAt' | 'solRemainingMs' | 'emergencyStartedAt' | 'emergencyRemainingMs' | 'solarEventId' | 'solarDeadlineAt' | 'solarRemainingMs'>
+
+function pauseTimerFields(state: TimerFields, now: number): Omit<TimerFields, 'game'> {
+  const solRemainingMs = state.solRemainingMs !== null
+    ? state.solRemainingMs
+    : state.game && !state.game.gameOver && state.solStartedAt !== null
+      ? Math.max(0, solSecondsFor(state.game.scenarioId) * 1000 - (now - state.solStartedAt))
+      : null
+  const emergencyRemainingMs = state.emergencyRemainingMs !== null
+    ? state.emergencyRemainingMs
+    : state.game?.emergency?.length && !state.game.gameOver && state.emergencyStartedAt !== null
+      ? Math.max(0, EMERGENCY_SECONDS * 1000 - (now - state.emergencyStartedAt))
+      : null
+  const solarRemainingMs = state.solarRemainingMs !== null
+    ? state.solarRemainingMs
+    : state.game && !state.game.gameOver && state.solarDeadlineAt !== null
+      ? Math.max(0, state.solarDeadlineAt - now)
+      : null
+  return {
+    solStartedAt: null,
+    solRemainingMs,
+    emergencyStartedAt: null,
+    emergencyRemainingMs,
+    solarEventId: state.solarEventId,
+    solarDeadlineAt: null,
+    solarRemainingMs,
+  }
+}
+
+function resumeTimerFields(state: TimerFields, now: number): Omit<TimerFields, 'game'> {
+  if (!state.game || state.game.gameOver) {
+    return {
+      solStartedAt: null,
+      solRemainingMs: null,
+      emergencyStartedAt: null,
+      emergencyRemainingMs: null,
+      solarEventId: null,
+      solarDeadlineAt: null,
+      solarRemainingMs: null,
+    }
+  }
+  const solTotalMs = solSecondsFor(state.game.scenarioId) * 1000
+  const solStartedAt = state.solRemainingMs !== null
+    ? now - (solTotalMs - state.solRemainingMs)
+    : state.solStartedAt ?? now
+  const emergencyStartedAt = state.game.emergency?.length
+    ? (state.emergencyRemainingMs !== null
+        ? now - (EMERGENCY_SECONDS * 1000 - state.emergencyRemainingMs)
+        : state.emergencyStartedAt ?? now)
+    : null
+  const event = pendingEvent(state.game)
+  const solarActive = event?.kind === 'solar' && state.solarEventId === event.id
+  const solarDeadlineAt = solarActive
+    ? (state.solarRemainingMs !== null ? now + state.solarRemainingMs : state.solarDeadlineAt)
+    : null
+  return {
+    solStartedAt,
+    solRemainingMs: null,
+    emergencyStartedAt,
+    emergencyRemainingMs: null,
+    solarEventId: solarActive ? state.solarEventId : null,
+    solarDeadlineAt,
+    solarRemainingMs: null,
+  }
+}
+
 function removeSave(): void {
   if (typeof localStorage !== 'undefined') localStorage.removeItem(SAVE_KEY)
 }
@@ -155,6 +232,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   nasa: ARCHIVED_CONDITIONS,
   nasaStatus: 'archived',
   emergencyStartedAt: null,
+  emergencyRemainingMs: null,
   floatingTexts: [],
   loadNasaConditions: async () => {
     const cached = readCachedConditions()
@@ -173,6 +251,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   dropFloatingText: (id) => set((state) => ({ floatingTexts: state.floatingTexts.filter((item) => item.id !== id) })),
   solStartedAt: null,
+  solRemainingMs: null,
+  solarEventId: null,
+  solarDeadlineAt: null,
+  solarRemainingMs: null,
+  timersPaused: false,
+  endingDismissed: false,
+  ensureSolarTimer: (eventId, windowSeconds) => set((state) => {
+    if (state.solarEventId === eventId && (state.solarDeadlineAt !== null || state.solarRemainingMs !== null)) return {}
+    if (state.timersPaused) return { solarEventId: eventId, solarDeadlineAt: null, solarRemainingMs: windowSeconds * 1000 }
+    return { solarEventId: eventId, solarDeadlineAt: Date.now() + windowSeconds * 1000, solarRemainingMs: null }
+  }),
+  setTimersPaused: (paused) => set((state) => {
+    if (state.timersPaused === paused) return {}
+    const now = Date.now()
+    return paused
+      ? { timersPaused: true, ...pauseTimerFields(state, now) }
+      : { timersPaused: false, ...(state.screen === 'game' ? resumeTimerFields(state, now) : {}) }
+  }),
+  dismissEnding: () => set({ endingDismissed: true }),
   screen: 'home',
   previousScreen: 'home',
   selectedScenarioId: 'standard',
@@ -187,20 +284,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
   message: null,
   corruptSave: false,
   savedGameAvailable: false,
-  setScreen: (screen) => set((state) => ({ screen, previousScreen: state.screen, errorMessage: null })),
+  setScreen: (screen) => set((state) => {
+    const now = Date.now()
+    if (state.screen === 'game' && screen !== 'game') {
+      return { screen, previousScreen: state.screen, errorMessage: null, novaExpanded: false, timersPaused: false, ...pauseTimerFields(state, now) }
+    }
+    if (screen === 'game' && state.screen !== 'game') {
+      return { screen, previousScreen: state.screen, errorMessage: null, novaExpanded: false, timersPaused: false, ...resumeTimerFields(state, now) }
+    }
+    return { screen, previousScreen: state.screen, errorMessage: null, novaExpanded: false }
+  }),
   setScenario: (selectedScenarioId) => set({ selectedScenarioId }),
   startGame: () => {
     const game = createInitialGame(get().selectedScenarioId, missionConditions(get().nasa))
     const solStartedAt = Date.now()
     persistGame(game)
-    set({ game, solStartedAt, screen: 'game', previousScreen: 'home', emergencyStartedAt: null, floatingTexts: [], savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: 'Hello, commander! Your mission starts on sol 1.' })
+    set({ game, solStartedAt, solRemainingMs: null, emergencyStartedAt: null, emergencyRemainingMs: null, solarEventId: null, solarDeadlineAt: null, solarRemainingMs: null, timersPaused: false, endingDismissed: false, screen: 'game', previousScreen: 'home', floatingTexts: [], savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: 'Hello, commander! Your mission starts on sol 1.' })
   },
-  continueGame: () => set((state) => state.game ? { screen: 'game', previousScreen: 'home', emergencyStartedAt: state.game.emergency?.length ? Date.now() : null, solStartedAt: Date.now(), novaLine: `Great to see you again, commander! We are on sol ${state.game.sol}. Check your reserves and I will help with the next step.`, novaSpeechVersion: state.novaSpeechVersion + 1, novaSpeechVisible: true } : {}),
+  continueGame: () => set((state) => state.game ? { screen: 'game', previousScreen: 'home', timersPaused: false, endingDismissed: false, ...resumeTimerFields(state, Date.now()), novaLine: `Great to see you again, commander! We are on sol ${state.game.sol}. Check your reserves and I will help with the next step.`, novaSpeechVersion: state.novaSpeechVersion + 1, novaSpeechVisible: true } : {}),
   restartGame: () => {
     const game = createInitialGame(get().selectedScenarioId, missionConditions(get().nasa))
     const solStartedAt = Date.now()
     persistGame(game)
-    set({ game, solStartedAt, screen: 'game', previousScreen: 'home', emergencyStartedAt: null, floatingTexts: [], savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: 'The new mission is ready. Let us take care of the base!' })
+    set({ game, solStartedAt, solRemainingMs: null, emergencyStartedAt: null, emergencyRemainingMs: null, solarEventId: null, solarDeadlineAt: null, solarRemainingMs: null, timersPaused: false, endingDismissed: false, screen: 'game', previousScreen: 'home', floatingTexts: [], savedGameAvailable: true, selectedPlotId: null, novaExpanded: false, novaLine: NOVA_WELCOME, novaSpeechVersion: get().novaSpeechVersion + 1, novaSpeechVisible: true, tutorialDismissed: false, previewCommand: null, errorMessage: null, message: 'The new mission is ready. Let us take care of the base!' })
   },
   restoreGame: () => {
     try {
@@ -212,7 +318,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set({ corruptSave: true })
         return
       }
-      set({ game: parsed.game, savedGameAvailable: true })
+      const restored = parsed.game
+      const active = !restored.gameOver
+      const pending = pendingEvent(restored)
+      const solarWindowMs = pending?.kind === 'solar' ? SHELTER_WINDOW_SECONDS[restored.conditions?.spaceWeather ?? 'active'] * 1000 : null
+      set({
+        game: restored,
+        savedGameAvailable: true,
+        solStartedAt: null,
+        solRemainingMs: active ? solSecondsFor(restored.scenarioId) * 1000 : null,
+        emergencyStartedAt: null,
+        emergencyRemainingMs: active && restored.emergency?.length ? EMERGENCY_SECONDS * 1000 : null,
+        solarEventId: active && pending?.kind === 'solar' ? pending.id : null,
+        solarDeadlineAt: null,
+        solarRemainingMs: active && solarWindowMs !== null ? solarWindowMs : null,
+        endingDismissed: false,
+      })
     } catch {
       set({ corruptSave: true })
     }
@@ -251,23 +372,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return false
     }
     persistGame(result.state)
+    const now = Date.now()
     const emergencyStartedAt = emergencyClock(game, result.state, get().emergencyStartedAt)
     const solClosed = result.state.sol !== game.sol || result.state.solsCompleted > game.solsCompleted
-    const solStartedAt = solClosed || get().solStartedAt === null ? Date.now() : get().solStartedAt
+    const solStartedAt = result.state.gameOver ? null : (solClosed || get().solStartedAt === null ? now : get().solStartedAt)
+    const activeEvent = pendingEvent(result.state)
+    const clearSolar = result.state.gameOver || activeEvent?.kind !== 'solar'
     const novaLine = novaTaskMessage(command, result.state)
+    const logAdded = result.state.log.length > game.log.length
+    const nextMessage = result.state.gameOver
+      ? null
+      : logAdded
+        ? result.state.log.at(-1)?.consequence ?? null
+        : command.type === 'toggleRover'
+          ? (result.state.rover?.riding ? 'Driving the Mars rover (×2 speed).' : 'Rover parked.')
+          : null
     set({
       game: result.state,
       solStartedAt,
+      ...(solClosed ? { solRemainingMs: null } : {}),
       emergencyStartedAt,
+      ...(!emergencyStartedAt ? { emergencyRemainingMs: null } : {}),
+      ...(clearSolar ? { solarEventId: null, solarDeadlineAt: null, solarRemainingMs: null } : {}),
       floatingTexts: [...get().floatingTexts, ...resourceChanges(game, result.state)].slice(-6),
       screen: 'game',
       novaLine,
       novaSpeechVersion: get().novaSpeechVersion + 1,
       novaSpeechVisible: true,
       errorMessage: null,
-      message: command.type === 'advance' ? result.state.log.at(-1)?.consequence ?? null : result.state.log.at(-1)?.consequence ?? null,
+      message: nextMessage,
       previewCommand: solClosed ? null : get().previewCommand,
       selectedPlotId: command.type === 'build' ? null : get().selectedPlotId,
+      ...(!result.state.gameOver ? { endingDismissed: false } : {}),
     })
     return true
   },
@@ -279,9 +415,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const step = MARS_WORLD.moveStep
     const x = Math.max(0, Math.min(MARS_WORLD.width, game.mapPosition.x + dx * step))
     const y = Math.max(0, Math.min(MARS_WORLD.height, game.mapPosition.y + dy * step))
-    set({ game: { ...game, mapPosition: { x, y } } })
+    const nextGame = { ...game, mapPosition: { x, y } }
+    persistGame(nextGame)
+    set({ game: nextGame })
   },
-  setAstronautPosition: (x, y) => {
+  setAstronautPosition: (x, y, persistNow = false) => {
     const game = get().game
     if (!game || game.gameOver || (game.crewBusy && game.crewTask === 'shelter')) return
     const mapPosition = { x: Math.max(0, Math.min(MARS_WORLD.width, x)), y: Math.max(0, Math.min(MARS_WORLD.height, y)) }
@@ -291,7 +429,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const travelled = dispatchGameCommand(moved, { type: 'travel', distance: Math.hypot(mapPosition.x - game.mapPosition.x, mapPosition.y - game.mapPosition.y), mode: riding ? 'rover' : 'foot' }).state
     const changes = resourceChanges(game, travelled)
     const emergencyStartedAt = emergencyClock(game, travelled, get().emergencyStartedAt)
-    if (changes.length || Date.now() - lastPersistedAt > PERSIST_EVERY_MS) persistGame(travelled)
+    if (persistNow || changes.length || Date.now() - lastPersistedAt > PERSIST_EVERY_MS) persistGame(travelled)
     set({
       game: travelled,
       emergencyStartedAt,

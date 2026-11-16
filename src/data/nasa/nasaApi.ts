@@ -132,9 +132,19 @@ export function readCachedConditions(now = Date.now()): NasaConditions | null {
     if (typeof localStorage === 'undefined') return null
     const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return null
-    const cached = JSON.parse(raw) as NasaConditions
-    if (cached.source !== 'live' || now - Date.parse(cached.fetchedAt) > CACHE_HOURS * 3_600_000) return null
-    return cached
+    const cached = JSON.parse(raw) as Partial<NasaConditions>
+    if (
+      cached.source !== 'live'
+      || typeof cached.fetchedAt !== 'string'
+      || now - Date.parse(cached.fetchedAt) > CACHE_HOURS * 3_600_000
+      || !Array.isArray(cached.climate)
+      || cached.climate.length === 0
+      || !cached.spaceWeather
+      || typeof cached.spaceWeather.level !== 'string'
+    ) {
+      return null
+    }
+    return cached as NasaConditions
   } catch {
     return null
   }

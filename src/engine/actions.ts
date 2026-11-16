@@ -2,6 +2,7 @@ import { marsPlots } from '../data/mars/plots'
 import { supplySites } from '../data/mars/supplies'
 import { MARS_WORLD } from '../data/mars/world'
 import { isWithinInteractionRange } from '../data/mars/movement'
+import { isBlocked } from '../data/mars/terrain'
 import { advanceSol } from './advanceSol'
 import { BUILDING_COST, BUILDING_EFFECT, BUILDING_LABEL, BUILDING_LIMIT, RESOURCE_CAPACITY, GAME_CONFIG, SHELTER_COST, TRAVEL_COST } from './config'
 import { hasUnresolvedEvent, pendingEvent } from './events'
@@ -19,6 +20,13 @@ export function freshCrop(harvested = false): Crop {
  * Marks the life-support resources that are at zero. The mission does not end right away:
  * the player gets an alert with a countdown to refill them (see `expireEmergency`).
  */
+function lowReserveReason(state: GameState): string | undefined {
+  if (state.resources.energy < GAME_CONFIG.energyRiskBelow) return 'Energy is low. Check your reserves before the next sol.'
+  if (state.resources.water < GAME_CONFIG.waterRiskBelow) return 'Water is low. Check your reserves before the next sol.'
+  if (state.resources.food < GAME_CONFIG.foodRiskBelow) return 'Food is low. Check your reserves before the next sol.'
+  return undefined
+}
+
 export function refreshEmergency(state: GameState): GameState {
   if (state.gameOver) return state
   const empty = LIFE_RESOURCES.filter((resource) => state.resources[resource] <= 0)
@@ -31,8 +39,19 @@ export function refreshEmergency(state: GameState): GameState {
       lifeSupportReason: `${empty.map((resource) => RESOURCE_WORD[resource]).join(' and ')} ran out! Refill before the alert ends.`.replace(/^./, (letter) => letter.toUpperCase()),
     }
   }
-  if (!state.emergency) return state
-  return { ...state, emergency: undefined, lifeSupport: 'risk', lifeSupportReason: 'Life support is back online. Keep your reserves up!' }
+  const lowReason = lowReserveReason(state)
+  const nextStatus = lowReason ? 'risk' as const : 'stable' as const
+  if (!state.emergency && state.lifeSupport === nextStatus && (nextStatus === 'stable' || state.lifeSupportReason.includes('after covering'))) {
+    return state
+  }
+  return {
+    ...state,
+    emergency: undefined,
+    lifeSupport: nextStatus,
+    lifeSupportReason: state.emergency
+      ? 'Life support is back online. Keep your reserves up!'
+      : lowReason ?? 'Life-support reserves are stable.',
+  }
 }
 
 function movementLocked(state: GameState): boolean {
@@ -68,7 +87,9 @@ function resourceCost(state: GameState, cost: Partial<Record<ResourceName, numbe
 
 function workPosition(state: GameState, plotId: string): GameState['mapPosition'] {
   const plot = marsPlots.find((item) => item.id === plotId)
-  return plot ? { x: plot.x, y: Math.min(MARS_WORLD.height, plot.y + 110) } : state.mapPosition
+  if (!plot) return state.mapPosition
+  const candidate = { x: plot.x, y: Math.min(MARS_WORLD.height, plot.y + 110) }
+  return isBlocked(candidate) ? state.mapPosition : candidate
 }
 
 function build(state: GameState, command: Extract<GameCommand, { type: 'build' }>): ActionResult {
@@ -89,14 +110,19 @@ function build(state: GameState, command: Extract<GameCommand, { type: 'build' }
   const name = BUILDING_LABEL[command.building].toLowerCase()
   const costText = (Object.entries(cost) as [ResourceName, number][]).map(([resource, amount]) => `−${amount} ${RESOURCE_WORD[resource]}`).join(', ')
   const costDeltas = Object.fromEntries((Object.entries(cost) as [ResourceName, number][]).map(([resource, amount]) => [resource, -amount]))
+  const nextPosition = workPosition(state, command.plotId)
   const next = {
     ...state,
     resources,
     crewBusy: true,
     crewTask: 'build' as const,
     buildings: [...state.buildings, { id: `${command.building}-${state.sol}-${command.plotId}`, type: command.building, plotId: command.plotId, operational: true }],
-    mapPosition: workPosition(state, command.plotId),
-    rover: command.building === 'garage' ? { position: { x: plot.x + 150, y: plot.y + 60 }, riding: false } : state.rover,
+    mapPosition: nextPosition,
+    rover: command.building === 'garage'
+      ? { position: { x: plot.x + 150, y: plot.y + 60 }, riding: false }
+      : state.rover?.riding
+        ? { ...state.rover, position: nextPosition }
+        : state.rover,
   }
   return accept(record(next, {
     action: `Build ${name}`,
@@ -262,11 +288,18 @@ function toggleRover(state: GameState): ActionResult {
   return accept({ ...state, rover: { position: state.rover.position, riding: true }, mapPosition: state.rover.position })
 }
 
+export function sleepBlockedReasonFor(state: GameState): string | null {
+  if (state.gameOver) return 'The mission is over.'
+  if (hasUnresolvedEvent(state)) return 'Resolve the alert first.'
+  if (state.emergency?.length && state.crewTask !== 'shelter') return 'Refill life support first.'
+  return null
+}
+
 function sleep(state: GameState): ActionResult {
   if (state.gameOver) return reject(state, 'The mission is already over.')
   if (hasUnresolvedEvent(state)) return reject(state, 'Resolve the alert before sleeping.')
-  if (state.emergency?.length) return reject(state, 'You cannot sleep while life support is empty. Refill it first!')
   const sheltered = state.crewTask === 'shelter'
+  if (state.emergency?.length && !sheltered) return reject(state, 'You cannot sleep while life support is empty. Refill it first!')
   const zone = safeZoneInRange(state, state.mapPosition)
   if (!sheltered && zone?.id !== 'habitat') return reject(state, 'Go back to the habitat to sleep.')
   const rested = record(state, {

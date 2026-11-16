@@ -13,7 +13,7 @@ import { useGameStore } from '../../store/useGameStore'
 import { SolarShelterAlert } from '../events/SolarShelterAlert'
 import { craters, dunes, LAVA_CAVE, rockFields, stepAround, terrainSpeedFactor } from '../../data/mars/terrain'
 import { supplyReadyOnSol } from '../../engine/actions'
-import { ROVER_SPEED_MULTIPLIER, SHELTER_COST, SHELTER_WINDOW_SECONDS } from '../../engine/config'
+import { RESOURCE_CAPACITY, ROVER_SPEED_MULTIPLIER, SHELTER_COST, SHELTER_WINDOW_SECONDS } from '../../engine/config'
 import { currentObjective } from '../../engine/objectives'
 import { nearestSafeZone, safeZoneInRange, safeZones } from '../../engine/safeZones'
 import { BuildProgress, CollectRing, FloatingTexts, LavaCave, ObjectiveGuide, ParkedRover, RidingRover, RoverGarage, SafeZoneMarkers, StormBunker, VisitorBubble, WaterExtractor } from './MapExtras'
@@ -48,7 +48,7 @@ export const MarsMap = memo(function MarsMap(props: MarsMapProps) {
 
 function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnterHabitat, game }: MarsMapProps & { game: GameState }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const walkRef = useRef<{ frame: number; destination: WorldPosition | null; direction: MovementDirection | null; position: WorldPosition | null; lastTime: number; lastPublishedAt: number; conversationId: string | null }>({ frame: 0, destination: null, direction: null, position: null, lastTime: 0, lastPublishedAt: 0, conversationId: null })
+  const walkRef = useRef<{ frame: number; destination: WorldPosition | null; direction: MovementDirection | null; heldDirections: MovementDirection[]; position: WorldPosition | null; lastTime: number; lastPublishedAt: number; conversationId: string | null; supplySiteId: string | null }>({ frame: 0, destination: null, direction: null, heldDirections: [], position: null, lastTime: 0, lastPublishedAt: 0, conversationId: null, supplySiteId: null })
   const [walking, setWalking] = useState(false)
   const [facing, setFacing] = useState(0)
   const [livePosition, setLivePosition] = useState<WorldPosition | null>(null)
@@ -127,16 +127,41 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
   }, [speech])
   useEffect(() => () => window.clearTimeout(collectTimerRef.current), [])
 
+  useEffect(() => {
+    if (!movementLocked && !game.gameOver) return
+    window.clearTimeout(collectTimerRef.current)
+    const timer = window.setTimeout(() => setCollecting(null), 0)
+    return () => window.clearTimeout(timer)
+  }, [movementLocked, game.gameOver])
+
+  const startSupplyCollection = (site: SupplySite, currentGame: GameState) => {
+    const cap = RESOURCE_CAPACITY[site.resource]
+    if (cap !== undefined && currentGame.resources[site.resource] >= cap) {
+      dispatch({ type: 'collectSupply', siteId: site.id })
+      return
+    }
+    if (collecting) return
+    // A short "collecting" ring makes picking things up feel like an action.
+    setCollecting({ site, key: Date.now() })
+    window.clearTimeout(collectTimerRef.current)
+    collectTimerRef.current = window.setTimeout(() => {
+      setCollecting(null)
+      dispatch({ type: 'collectSupply', siteId: site.id })
+    }, COLLECT_MS)
+  }
+
   const stopWalking = () => {
     cancelAnimationFrame(walkRef.current.frame)
-    if (walkRef.current.position) setAstronautPosition(walkRef.current.position.x, walkRef.current.position.y)
+    if (walkRef.current.position) setAstronautPosition(walkRef.current.position.x, walkRef.current.position.y, true)
     setLivePosition(null)
     walkRef.current.destination = null
     walkRef.current.direction = null
+    walkRef.current.heldDirections = []
     walkRef.current.position = null
     walkRef.current.lastTime = 0
     walkRef.current.lastPublishedAt = 0
     walkRef.current.conversationId = null
+    walkRef.current.supplySiteId = null
     setWalking(false)
   }
 
@@ -149,8 +174,10 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
     if ((!target && !direction) || !current || !currentGame || locked || currentGame.gameOver) {
       walkRef.current.destination = null
       walkRef.current.direction = null
+      walkRef.current.heldDirections = []
       walkRef.current.position = null
       walkRef.current.lastTime = 0
+      walkRef.current.supplySiteId = null
       setWalking(false)
       return
     }
@@ -174,19 +201,28 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
     const reached = Boolean(target && next.x === target.x && next.y === target.y) || (stuck && Boolean(target))
     setLivePosition(next)
     if (time - walkRef.current.lastPublishedAt >= POSITION_PUBLISH_MS || reached) {
-      setAstronautPosition(next.x, next.y)
+      setAstronautPosition(next.x, next.y, reached)
       walkRef.current.lastPublishedAt = time
     }
     if (reached) {
       const visitorId = walkRef.current.conversationId
+      const supplyId = walkRef.current.supplySiteId
       walkRef.current.destination = null
       walkRef.current.position = null
       walkRef.current.lastTime = 0
       walkRef.current.lastPublishedAt = 0
       walkRef.current.conversationId = null
+      walkRef.current.supplySiteId = null
       setLivePosition(null)
       setWalking(false)
-      if (visitorId && isWithinInteractionRange(next, visitingAstronauts.find((item) => item.id === visitorId) ?? next, MARS_WORLD.interactionRange)) setSpeech({ visitorId, text: visitorLine(visitorId, currentGame.sol), key: time })
+      if (visitorId && isWithinInteractionRange(next, visitingAstronauts.find((item) => item.id === visitorId) ?? next, MARS_WORLD.interactionRange)) {
+        setSpeech({ visitorId, text: visitorLine(visitorId, currentGame.sol), key: time })
+      } else if (supplyId) {
+        const site = supplySites.find((item) => item.id === supplyId)
+        if (site && supplyReadyOnSol(currentGame, site.id) <= currentGame.sol && isWithinInteractionRange(next, site.position, MARS_WORLD.interactionRange)) {
+          startSupplyCollection(site, currentGame)
+        }
+      }
       return
     }
     walkRef.current.frame = requestAnimationFrame(animateWalking)
@@ -197,16 +233,18 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
     setCollecting(null)
   }
 
-  const walkTo = (destination: WorldPosition, conversationId: string | null = null) => {
+  const walkTo = (destination: WorldPosition, conversationId: string | null = null, supplySiteId: string | null = null) => {
     if (movementLocked) return
     cancelCollecting()
     cancelAnimationFrame(walkRef.current.frame)
     walkRef.current.destination = destination
     walkRef.current.direction = null
+    walkRef.current.heldDirections = []
     walkRef.current.position = walkRef.current.position ?? useGameStore.getState().game?.mapPosition ?? mapPosition
     walkRef.current.lastTime = 0
     walkRef.current.lastPublishedAt = 0
     walkRef.current.conversationId = conversationId
+    walkRef.current.supplySiteId = supplySiteId
     setWalking(true)
     walkRef.current.frame = requestAnimationFrame(animateWalking)
   }
@@ -221,6 +259,7 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
     walkRef.current.lastTime = 0
     walkRef.current.lastPublishedAt = 0
     walkRef.current.conversationId = null
+    walkRef.current.supplySiteId = null
     setFacing(({ up: 0, right: 90, down: 180, left: -90 } as const)[direction])
     setWalking(true)
     walkRef.current.frame = requestAnimationFrame(animateWalking)
@@ -255,18 +294,11 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
       const dx = site.position.x - mapPosition.x
       const dy = site.position.y - mapPosition.y
       setFacing(Math.atan2(dy, dx) * 180 / Math.PI + 90)
-      walkTo(site.position)
+      walkTo(site.position, null, site.id)
       return
     }
     stopWalking()
-    if (collecting) return
-    // A short "collecting" ring makes picking things up feel like an action.
-    setCollecting({ site, key: Date.now() })
-    window.clearTimeout(collectTimerRef.current)
-    collectTimerRef.current = window.setTimeout(() => {
-      setCollecting(null)
-      dispatch({ type: 'collectSupply', siteId: site.id })
-    }, COLLECT_MS)
+    startSupplyCollection(site, game)
   }
 
   const toggleRover = () => {
@@ -318,7 +350,9 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
     if (movementLocked) return false
     if (key === 'e' || key === 'E') {
       if (repeat) return true
-      if (nearbyVisitor) talkToVisitor(nearbyVisitor.id)
+      if (solarEvent && shelterHere) shelterInZone()
+      else if (solarEvent && atHabitat) enterHabitat()
+      else if (nearbyVisitor) talkToVisitor(nearbyVisitor.id)
       else if (nearbySupply) collectSupply(nearbySupply)
       else if (shelterHere) shelterInZone()
       else if (atHabitat) enterHabitat()
@@ -333,13 +367,23 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
     }
     const direction = directionForKey(key)
     if (!direction) return false
+    if (!walkRef.current.heldDirections.includes(direction)) {
+      walkRef.current.heldDirections = [...walkRef.current.heldDirections, direction]
+    }
     if (walkRef.current.direction !== direction) walkInDirection(direction)
     return true
   }
 
   const handleMapKeyUp = (key: string) => {
     const direction = directionForKey(key)
-    if (direction && walkRef.current.direction === direction) stopWalking()
+    if (!direction) return
+    walkRef.current.heldDirections = walkRef.current.heldDirections.filter((item) => item !== direction)
+    const fallback = walkRef.current.heldDirections.at(-1)
+    if (fallback && walkRef.current.direction !== fallback) {
+      walkInDirection(fallback)
+    } else if (!fallback && walkRef.current.direction === direction) {
+      stopWalking()
+    }
   }
 
   const select = (plotId: string) => selectPlot(selectedPlotId === plotId ? null : plotId)
@@ -385,7 +429,7 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
             {visitingAstronauts.map((visitor) => <CrewVisitor key={visitor.id} visitor={visitor} disabled={movementLocked} onTalk={onTalkToVisitor} />)}
             <AlienFlyby scenarioId={game.scenarioId} sol={game.sol} enabled={!game.gameOver} />
             {collecting && <CollectRing key={collecting.key} x={collecting.site.position.x} y={collecting.site.position.y} durationMs={COLLECT_MS}/>}
-            {riding ? <RidingRover x={mapPosition.x} y={mapPosition.y} facing={facing}/> : <Astronaut x={mapPosition.x} y={mapPosition.y} moving={walking} task={game.crewTask} facing={facing} />}
+            {riding ? <RidingRover x={mapPosition.x} y={mapPosition.y} facing={facing}/> : <Astronaut x={mapPosition.x} y={mapPosition.y} moving={walking} task={game.crewTask === 'shelter' ? 'shelter' : undefined} facing={facing} />}
             <FloatingTexts x={mapPosition.x} y={mapPosition.y}/>
             {speech && (() => { const visitor = visitingAstronauts.find((item) => item.id === speech.visitorId); return visitor ? <VisitorBubble key={speech.key} x={visitor.x} y={visitor.y} name={visitor.name} text={speech.text}/> : null })()}
             <NovaCompanion x={Math.min(MARS_WORLD.width - 115, mapPosition.x + 190)} y={Math.max(100, mapPosition.y - 128)} onRepeat={repeatNovaLine} />
@@ -399,16 +443,17 @@ function MarsMapScene({ immersive = false, solarSecondsRemaining = null, onEnter
       {selectedPlot && <button type="button" data-map-ui="true" disabled={movementLocked} aria-label={`Walk to ${selectedPlot.label}`} onClick={() => walkTo({ x: selectedPlot.x, y: selectedPlot.y })} className="absolute left-3 top-[4.8rem] z-20 min-h-11 rounded-xl border-2 border-white bg-[#4d4267]/95 px-3 text-[10px] font-black text-white shadow-lg hover:bg-[#66527f] focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60 sm:left-5 sm:top-[5rem] sm:px-4 sm:text-xs">{sheltering ? 'Shelter active · close the sol to leave' : isWithinInteractionRange(mapPosition, selectedPlot, MARS_WORLD.interactionRange) ? `You are at ${selectedPlot.id}` : `Walk to ${selectedPlot.id}`}</button>}
       <WorldRadar x={mapPosition.x} y={mapPosition.y} />
       <div data-map-ui="true" className="pointer-events-none absolute bottom-[108px] left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
-        {nearbyVisitor && !movementLocked && <ActionButton tone="sky" onClick={() => talkToVisitor(nearbyVisitor.id)} hotkey="E">💬 Talk to {nearbyVisitor.name}</ActionButton>}
-        {nearbySupply && !movementLocked && !nearbyVisitor && <ActionButton tone="green" disabled={Boolean(collecting)} onClick={() => collectSupply(nearbySupply)} hotkey="E">{collecting ? '⏳ Collecting…' : `📦 Collect ${nearbySupply.name}`}</ActionButton>}
-        {shelterHere && <ActionButton tone="teal" disabled={!canShelterHere} onClick={shelterInZone} hotkey="E">{`${shelterHere.icon} Hide in the ${shelterHere.name.toLowerCase()} ${SHELTER_COST[shelterHere.id] ? `(−${SHELTER_COST[shelterHere.id]} ⚡)` : '(free)'}`}</ActionButton>}
+        {solarEvent && shelterHere && <ActionButton tone="teal" disabled={!canShelterHere} onClick={shelterInZone} hotkey="E">{`${shelterHere.icon} Hide in the ${shelterHere.name.toLowerCase()} ${SHELTER_COST[shelterHere.id] ? `(−${SHELTER_COST[shelterHere.id]} ⚡)` : '(free)'}`}</ActionButton>}
+        {solarEvent && atHabitat && <ActionButton tone="teal" disabled={!canEnterHabitat} onClick={enterHabitat} hotkey="E">{`🏠 Hide in the habitat ship (−${SHELTER_COST.habitat} ⚡)`}</ActionButton>}
+        {nearbyVisitor && !movementLocked && !solarEvent && <ActionButton tone="sky" onClick={() => talkToVisitor(nearbyVisitor.id)} hotkey="E">💬 Talk to {nearbyVisitor.name}</ActionButton>}
+        {nearbySupply && !movementLocked && !nearbyVisitor && !solarEvent && <ActionButton tone="green" disabled={Boolean(collecting)} onClick={() => collectSupply(nearbySupply)} hotkey="E">{collecting ? '⏳ Collecting…' : `📦 Collect ${nearbySupply.name}`}</ActionButton>}
         {atHabitat && !solarEvent && <ActionButton tone="teal" disabled={!canEnterHabitat} onClick={enterHabitat} hotkey="E">🚪 Enter the habitat · sleep</ActionButton>}
         {(nearRover || riding) && !movementLocked && <ActionButton tone="orange" onClick={toggleRover} hotkey="R">{riding ? '🚶 Get off the rover' : '🚙 Drive the rover'}</ActionButton>}
         {atHabitat && solarEvent && !canEnterHabitat && <p role="status" className="max-w-80 rounded-xl border border-[#ffd491] bg-[#443547]/95 px-3 py-2 text-center text-sm font-black text-[#ffe0a8]">The habitat needs {SHELTER_COST.habitat} ⚡. Try the lava tube cave: it is free!</p>}
       </div>
       {!immersive && <div data-map-ui="true" className="absolute bottom-3 left-3 z-20 rounded-2xl border border-white/60 bg-[#322947]/90 px-3 py-2 text-[10px] font-semibold text-white shadow-lg sm:bottom-4 sm:left-5">{selectedPlot ? `${selectedPlot.label} · ${selectedPlot.description}` : 'Explore the Martian terrain'}</div>}
       {!immersive && <div data-map-ui="true" className="absolute bottom-3 right-3 z-20 hidden rounded-xl border border-white/50 bg-[#322947]/90 px-3 py-2 text-[10px] font-bold text-white shadow-lg sm:block">WASD / arrows · click to walk</div>}
-      {immersive && <div data-map-ui="true" className="absolute bottom-6 left-6 z-20 rounded-xl border border-white/35 bg-[#322947]/75 px-4 py-2 text-[10px] font-bold text-white/90 shadow-lg backdrop-blur-sm">{sheltering ? 'Shelter active: stay inside until the sol closes' : nearbyVisitor ? 'WASD / arrows · click to walk · E to talk' : nearbySupply ? 'WASD / arrows · click to walk · E to collect' : 'WASD / arrows · click the ground to walk'}</div>}
+      {immersive && <div data-map-ui="true" className="pointer-events-none absolute bottom-24 left-3 z-20 hidden rounded-xl border border-white/35 bg-[#322947]/75 px-4 py-2 text-[10px] font-bold text-white/90 shadow-lg backdrop-blur-sm xl:block">{sheltering ? 'Shelter active: stay inside until the sol closes' : solarEvent && (shelterHere || atHabitat) ? 'WASD / arrows · click to walk · E to shelter' : nearbyVisitor ? 'WASD / arrows · click to walk · E to talk' : nearbySupply ? 'WASD / arrows · click to walk · E to collect' : 'WASD / arrows · click the ground to walk'}</div>}
       <DirectionPad onMove={onMoveStep} onHold={onHoldDirection} immersive={immersive} disabled={movementLocked} />
       {solarEvent && solarSecondsRemaining !== null && <>
         <div aria-hidden="true" className="solar-alert-vignette pointer-events-none absolute inset-0 z-10"/>
@@ -559,7 +604,7 @@ const PlotMarker = memo(function PlotMarker({ plot, selected, occupied, onSelect
 })
 
 function Astronaut({ x, y, moving, task, facing }: { x: number; y: number; moving: boolean; task?: string; facing: number }) {
-  const facingLeft = facing < -45 || facing > 225
+  const facingLeft = facing < 0 || facing > 180
   return <g transform={`translate(${x} ${y})`} aria-hidden="true" pointerEvents="none" className="transition-transform duration-75 ease-linear motion-reduce:transition-none">
     <ellipse cy="20" rx="42" ry="17" fill="#382d3e" opacity=".42" className={moving ? 'astronaut-shadow-walk' : undefined}/>
     <g transform={facingLeft ? 'scale(-1 1)' : undefined}>
@@ -724,7 +769,7 @@ const AccessiblePlotList = memo(function AccessiblePlotList({ selectedPlotId, on
 })
 
 const DirectionPad = memo(function DirectionPad({ onMove, onHold, immersive, disabled }: { onMove: (direction: 'up' | 'down' | 'left' | 'right') => void; onHold: (direction: 'up' | 'down' | 'left' | 'right', held: boolean) => void; immersive: boolean; disabled: boolean }) {
-  return <div data-map-ui="true" role="group" aria-label={disabled ? 'Movement locked while sheltering' : 'Astronaut controls'} className={immersive ? 'absolute bottom-24 left-6 z-30 grid grid-cols-3 gap-1' : 'absolute bottom-3 right-3 z-30 grid grid-cols-3 gap-1 sm:bottom-5 sm:right-5 sm:hidden'} onPointerDown={(event) => event.stopPropagation()}><span/><DirectionButton disabled={disabled} label="Walk north" icon={<ChevronUp size={20}/>} onClick={() => onMove('up')} onHold={(held) => onHold('up', held)}/><span/><DirectionButton disabled={disabled} label="Walk west" icon={<ChevronLeft size={20}/>} onClick={() => onMove('left')} onHold={(held) => onHold('left', held)}/><span className={`grid size-11 place-items-center rounded-xl bg-[#f0e3ce] text-xl ${disabled ? 'opacity-60' : ''}`} aria-hidden="true">🧑‍🚀</span><DirectionButton disabled={disabled} label="Walk east" icon={<ChevronRight size={20}/>} onClick={() => onMove('right')} onHold={(held) => onHold('right', held)}/><span/><DirectionButton disabled={disabled} label="Walk south" icon={<ChevronDown size={20}/>} onClick={() => onMove('down')} onHold={(held) => onHold('down', held)}/><span/></div>
+  return <div data-map-ui="true" role="group" aria-label={disabled ? 'Movement locked while sheltering' : 'Astronaut controls'} className={immersive ? 'absolute bottom-24 left-3 z-30 grid grid-cols-3 gap-1 sm:left-6' : 'absolute bottom-3 right-3 z-30 grid grid-cols-3 gap-1 sm:bottom-5 sm:right-5 sm:hidden'} onPointerDown={(event) => event.stopPropagation()}><span/><DirectionButton disabled={disabled} label="Walk north" icon={<ChevronUp size={20}/>} onClick={() => onMove('up')} onHold={(held) => onHold('up', held)}/><span/><DirectionButton disabled={disabled} label="Walk west" icon={<ChevronLeft size={20}/>} onClick={() => onMove('left')} onHold={(held) => onHold('left', held)}/><span className={`grid size-11 place-items-center rounded-xl bg-[#f0e3ce] text-xl ${disabled ? 'opacity-60' : ''}`} aria-hidden="true">🧑‍🚀</span><DirectionButton disabled={disabled} label="Walk east" icon={<ChevronRight size={20}/>} onClick={() => onMove('right')} onHold={(held) => onHold('right', held)}/><span/><DirectionButton disabled={disabled} label="Walk south" icon={<ChevronDown size={20}/>} onClick={() => onMove('down')} onHold={(held) => onHold('down', held)}/><span/></div>
 })
 
 function DirectionButton({ label, icon, onClick, onHold, disabled }: { label: string; icon: ReactNode; onClick: () => void; onHold: (held: boolean) => void; disabled: boolean }) {

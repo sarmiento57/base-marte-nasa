@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useGameStore } from '../../store/useGameStore'
-import { pendingEvent } from '../../engine/events'
+import { getNovaMessage, resolveNovaDisplay } from './novaRules'
 import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 
 export function NovaChatter({ enabled, onOpen }: { enabled: boolean; onOpen: () => void }) {
@@ -35,7 +35,7 @@ export function NovaChatter({ enabled, onOpen }: { enabled: boolean; onOpen: () 
     return () => {
       window.clearTimeout(nextMessageTimer)
     }
-  }, [enabled, expanded, setNovaLine])
+  }, [enabled, expanded, speechVersion, setNovaLine])
 
   if (!enabled || expanded || !speechVisible || !novaLine) return null
   return <aside aria-label="Message from NOVA" className="absolute bottom-[94px] right-7 z-40 w-[320px]">
@@ -73,9 +73,8 @@ export function NovaAssistant({ embedded = false }: { embedded?: boolean } = {})
   const game = useGameStore((state) => state.game)
   const screen = useGameStore((state) => state.screen)
   const novaLine = useGameStore((state) => state.novaLine)
-  const contextualMessage = getNovaMessage(game, screen)
-  const message = screen === 'game' && novaLine ? { ...contextualMessage, text: novaLine } : contextualMessage
-  const urgent = contextualMessage.priority === 'urgent'
+  const message = resolveNovaDisplay(game, screen, novaLine)
+  const urgent = message.priority === 'urgent'
   if (embedded && !expanded) return null
   return <aside aria-label="NOVA mission assistant" className={embedded ? 'relative w-full' : 'fixed bottom-3 left-3 z-40 sm:bottom-5 sm:left-5'}>
     {expanded ? <div className="flex w-[min(370px,calc(100vw-1.5rem))] items-end gap-2 sm:gap-3">
@@ -83,26 +82,6 @@ export function NovaAssistant({ embedded = false }: { embedded?: boolean } = {})
       <section className={`relative mb-2 flex-1 rounded-[1.45rem] border-[3px] border-white p-3 shadow-[0_12px_35px_#31233c70] sm:p-4 ${urgent ? 'bg-[#ffefcb] text-[#46334c]' : 'bg-[#fff9ea] text-[#38324f]'}`} role={urgent ? 'alert' : 'status'} aria-live={urgent ? 'assertive' : 'polite'}><span className="absolute -bottom-2 left-4 size-4 rotate-45 border-b-[3px] border-r-[3px] border-white bg-inherit"/><header className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><NovaFace/><div><p className="text-base font-black sm:text-lg">NOVA</p><p className="text-[9px] font-extrabold uppercase tracking-[.12em] text-[#776970]">Mission assistant</p></div></div><button type="button" onClick={() => setExpanded(false)} aria-label="Minimize NOVA" className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#eee2d2] hover:bg-[#dfcfbb] focus-visible:outline-4 focus-visible:outline-offset-1 focus-visible:outline-[#332f52]"><ChevronDown size={18} aria-hidden="true"/></button></header><p className="mt-3 text-xs font-semibold leading-5 sm:text-sm">{message.text}</p><p className="mt-2 inline-flex items-center gap-1 text-[9px] font-extrabold text-[#54835e]"><Sparkles size={12} aria-hidden="true"/> {urgent ? 'Priority warning' : 'Local help · I never decide for you'}</p></section>
     </div> : <button type="button" onClick={() => setExpanded(true)} aria-label="Open NOVA help" className="flex min-h-12 items-center gap-2 rounded-full border-[3px] border-white bg-[#3f3b65] px-2.5 py-1.5 text-sm font-black text-white shadow-[0_8px_24px_#33234470] hover:bg-[#5a5384] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#3f3b65]"><NovaFace/><span>NOVA help</span><ChevronUp size={16} aria-hidden="true"/></button>}
   </aside>
-}
-
-function getNovaMessage(game: ReturnType<typeof useGameStore.getState>['game'], screen: ReturnType<typeof useGameStore.getState>['screen']): { text: string; priority: 'normal' | 'urgent' } {
-  if (screen === 'home') return { text: 'Hello, commander! Choose a route and explore the colony on foot. I will explain the alerts, but you always decide.', priority: 'normal' }
-  if (screen === 'howto') return { text: 'Read the steps before liftoff. During the mission you can open my help any time.', priority: 'normal' }
-  if (screen === 'science') return { text: 'Here we keep NASA observations, science explanations and game numbers apart.', priority: 'normal' }
-  if (screen === 'report') return { text: game?.won ? 'The colony made it! The report shows which decisions helped the mission.' : 'Every attempt teaches something. Read the report to see what happened and how to change the plan.', priority: 'normal' }
-  if (!game) return { text: 'When the mission starts, I will help you get to know the base and look after the crew.', priority: 'normal' }
-  const event = pendingEvent(game)
-  if (event?.kind === 'dust') return { text: 'Dust storm! The panels make less energy for two sols. Saving mode uses less, but the crop grows more slowly.', priority: 'urgent' }
-  if (event?.kind === 'solar') return { text: 'Solar storm! Follow the arrow to a safe zone: the habitat (6 ⚡), a storm bunker (3 ⚡) or the lava tube cave (free).', priority: 'urgent' }
-  if (game.emergency?.length) return { text: `We ran out of ${game.emergency.join(' and ')}! Follow the arrow to a supply and refill it before the timer ends.`, priority: 'urgent' }
-  if (game.gameOver) return { text: game.won ? 'We did it! Print your Junior Astronaut certificate.' : 'A rescue ship is coming. Read my tip and try again!', priority: 'normal' }
-  if (game.resources.energy < 20 || game.resources.water < 10 || game.resources.food < 10) return { text: `${game.lifeSupportReason} Walking uses a little ⚡ 💧 🍞. Grab a supply or sleep in the habitat when the panels need to recharge.`, priority: 'urgent' }
-  if (game.crewBusy) return { text: 'The crew is busy this sol. Sleep in the habitat to make time pass faster.', priority: 'normal' }
-  if (!game.buildings.some((building) => building.type === 'greenhouse')) return { text: 'Find a free plot on the map and build a greenhouse. It costs 2 spare parts; it does not plant anything by itself.', priority: 'normal' }
-  if (!game.crop.active) return { text: game.resources.seeds > 0 ? 'The greenhouse is ready. Planting costs 25 energy, 10 water and one seed.' : 'We need a seed to plant. Look for a seed case on the map.', priority: 'normal' }
-  if (game.crop.active && !game.crop.harvested && game.crop.growth >= 100) return { text: `The crop reached ${game.crop.growth} %! Check its health: a healthy harvest can add 35 food, a weaker one adds 25.`, priority: 'normal' }
-  if (game.crop.active && !game.crop.harvested) return { text: `The crop is at ${game.crop.growth} %. In ${game.crop.mode === 'normal' ? 'normal' : game.crop.mode === 'saving' ? 'saving' : 'off'} mode, growth and energy and water use change.`, priority: 'normal' }
-  return { text: 'Follow the yellow arrow to your next goal. Press R next to the rover to drive faster!', priority: 'normal' }
 }
 
 function NovaFace() {
