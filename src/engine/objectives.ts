@@ -65,7 +65,6 @@ export function missionSteps(state: GameState): { title: string; done: boolean }
 export function currentObjective(state: GameState): Objective | undefined {
   if (state.gameOver) return undefined
   const steps = missionSteps(state)
-  const doneCount = steps.filter((step) => step.done).length
   const step = Math.min(TOTAL_STEPS, steps.findIndex((item) => !item.done) + 1 || TOTAL_STEPS)
   const base = { step, total: TOTAL_STEPS }
 
@@ -83,37 +82,46 @@ export function currentObjective(state: GameState): Objective | undefined {
   if (state.crewBusy && state.crewTask === 'build') return { ...base, id: 'building', icon: '🛠️', title: 'Building in progress…', hint: 'The crew finishes when the sol ends. Sleep in the habitat to make time pass faster.', target: HABITAT_ZONE.position, targetLabel: 'Habitat' }
   if (state.crewBusy && state.crewTask === 'shelter') return { ...base, id: 'sheltered', icon: '🛡️', title: 'Safe! Wait for the storm to pass', hint: 'Sleep until morning to skip the rest of this sol.' }
 
-  const index = steps.findIndex((item) => !item.done)
+  const hasGreenhouse = state.buildings.some((building) => building.type === 'greenhouse')
+  const hasGarage = state.buildings.some((building) => building.type === 'garage')
+  const harvested = (state.harvests ?? 0) > 0 || state.foodHarvested > 0
+  const collected = (state.suppliesCollected ?? 0) > 0 || (state.collectedSupplyIds?.length ?? 0) > 0
   const greenhouse = greenhousePosition(state)
   const plot = nearestFreePlot(state)
-  switch (index) {
-    case 0: {
-      const supply = nearestSupply(state)
-      return { ...base, id: 'collect', icon: '📦', title: 'Collect a supply', hint: 'Walk to the glowing box and press E (or tap it) to collect it.', target: supply?.position, targetLabel: supply?.name }
-    }
-    case 1:
-      if (state.resources.spareParts < 2) {
-        const parts = nearestSupply(state, 'spareParts')
-        return { ...base, id: 'parts', icon: RESOURCE_ICON.spareParts, title: 'Find spare parts', hint: 'You need 2 spare parts to build. Grab some!', target: parts?.position, targetLabel: parts?.name }
-      }
-      return { ...base, id: 'greenhouse', icon: '🌱', title: 'Build a greenhouse', hint: 'Walk to a free plot, tap it, open Build and choose Greenhouse.', target: plot ? { x: plot.x, y: plot.y } : undefined, targetLabel: plot?.label }
-    case 2:
-      if (state.resources.seeds < 1) {
-        const seeds = nearestSupply(state, 'seeds')
-        return { ...base, id: 'seeds', icon: RESOURCE_ICON.seeds, title: 'Find seeds', hint: 'You need a seed to plant. Look for a seed case.', target: seeds?.position, targetLabel: seeds?.name }
-      }
-      return { ...base, id: 'sow', icon: '🌱', title: 'Plant seeds', hint: 'Walk to the greenhouse, open Crop and press Plant.', target: greenhouse, targetLabel: 'Greenhouse' }
-    case 3:
-      if (state.resources.spareParts < 2) {
-        const parts = nearestSupply(state, 'spareParts')
-        return { ...base, id: 'parts', icon: RESOURCE_ICON.spareParts, title: 'Find spare parts', hint: 'The rover garage needs 2 spare parts. Grab some!', target: parts?.position, targetLabel: parts?.name }
-      }
-      return { ...base, id: 'garage', icon: '🚙', title: 'Build the rover garage', hint: 'A rover drives twice as fast. Build the garage on a free plot.', target: plot ? { x: plot.x, y: plot.y } : undefined, targetLabel: plot?.label }
-    case 4:
-      return { ...base, id: 'grow', icon: '⏳', title: `Grow the crop to 100 % (now ${state.crop.growth} %)`, hint: 'Crops grow when a sol ends. Keep water and energy up, or sleep in the habitat to make time pass.', target: HABITAT_ZONE.position, targetLabel: 'Habitat' }
-    case 5:
-      return { ...base, id: 'harvest', icon: '🧺', title: 'Harvest the food', hint: 'The crop is ready! Walk to the greenhouse and harvest it.', target: greenhouse, targetLabel: 'Greenhouse' }
-    default:
-      return { ...base, step: Math.min(TOTAL_STEPS, doneCount + 1), id: 'survive', icon: '🏁', title: `Keep the colony safe until sol ${state.maxSols}`, hint: 'Keep energy, water and food up. A water extractor or a storm bunker can help!', target: HABITAT_ZONE.position, targetLabel: 'Habitat' }
+
+  // Harvest and post-harvest survival never get blocked by skipped optional steps (supplies or rover garage).
+  if (harvested) {
+    return { ...base, step: TOTAL_STEPS, id: 'survive', icon: '🏁', title: `Keep the colony safe until sol ${state.maxSols}`, hint: 'Keep energy, water and food up. A water extractor or a storm bunker can help!', target: HABITAT_ZONE.position, targetLabel: 'Habitat' }
   }
+  if (state.crop.active && !state.crop.harvested && state.crop.growth >= GAME_CONFIG.cropHarvestGrowth) {
+    if (state.crewBusy) {
+      return { ...base, step: 6, id: 'grow', icon: '⏳', title: 'Crop ready tomorrow!', hint: 'The crew finished working for today. Sleep in the habitat to harvest next sol.', target: HABITAT_ZONE.position, targetLabel: 'Habitat' }
+    }
+    return { ...base, step: 6, id: 'harvest', icon: '🧺', title: 'Harvest the food', hint: 'The crop is ready! Walk to the greenhouse and harvest it.', target: greenhouse, targetLabel: 'Greenhouse' }
+  }
+  if (state.crop.active && !state.crop.harvested) {
+    if (!hasGarage && !state.crewBusy && state.resources.spareParts >= 2) {
+      return { ...base, step: 4, id: 'garage', icon: '🚙', title: 'Build the rover garage', hint: 'A rover drives twice as fast. Build the garage on a free plot.', target: plot ? { x: plot.x, y: plot.y } : undefined, targetLabel: plot?.label }
+    }
+    return { ...base, step: 5, id: 'grow', icon: '⏳', title: `Grow the crop to 100 % (now ${state.crop.growth} %)`, hint: 'Crops grow when a sol ends. Keep water and energy up, or sleep in the habitat to make time pass.', target: HABITAT_ZONE.position, targetLabel: 'Habitat' }
+  }
+  if (hasGreenhouse) {
+    if (state.crewBusy) {
+      return { ...base, step: 3, id: 'grow', icon: '⏳', title: 'Crew busy this sol', hint: 'Sleep in the habitat so the crew is free to plant next sol.', target: HABITAT_ZONE.position, targetLabel: 'Habitat' }
+    }
+    if (state.resources.seeds < 1) {
+      const seeds = nearestSupply(state, 'seeds')
+      return { ...base, step: 3, id: 'seeds', icon: RESOURCE_ICON.seeds, title: 'Find seeds', hint: 'You need a seed to plant. Look for a seed case.', target: seeds?.position, targetLabel: seeds?.name }
+    }
+    return { ...base, step: 3, id: 'sow', icon: '🌱', title: 'Plant seeds', hint: 'Walk to the greenhouse, open Crop and press Plant.', target: greenhouse, targetLabel: 'Greenhouse' }
+  }
+  if (collected) {
+    if (state.resources.spareParts < 2) {
+      const parts = nearestSupply(state, 'spareParts')
+      return { ...base, step: 2, id: 'parts', icon: RESOURCE_ICON.spareParts, title: 'Find spare parts', hint: 'You need 2 spare parts to build. Grab some!', target: parts?.position, targetLabel: parts?.name }
+    }
+    return { ...base, step: 2, id: 'greenhouse', icon: '🌱', title: 'Build a greenhouse', hint: 'Walk to a free plot, tap it, open Build and choose Greenhouse.', target: plot ? { x: plot.x, y: plot.y } : undefined, targetLabel: plot?.label }
+  }
+  const supply = nearestSupply(state)
+  return { ...base, step: 1, id: 'collect', icon: '📦', title: 'Collect a supply', hint: 'Walk to the glowing box and press E (or tap it) to collect it.', target: supply?.position, targetLabel: supply?.name }
 }
