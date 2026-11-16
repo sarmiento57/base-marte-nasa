@@ -55,3 +55,33 @@ Cambios:
 | Navegador (Chrome sin interfaz, 1440 × 900) | Portada y misión en inglés sin errores de consola; la nave cruza la pantalla en el sol 1. |
 | Rendimiento (Chrome con CPU ×4 más lenta, 5 s caminando) | Tiempo de JavaScript de ~1.28 s a ~0.76 s; de 85–88 a 94–102 fotogramas. El resto del costo es el pintado del SVG grande. |
 | Pendiente | Revisar en el navegador del equipo; adaptación móvil sin decidir (BM-19 vs. guía de continuidad). |
+
+## Rama feature/keys · teclado, pantalla de carga y mejora de misiones (15 de noviembre de 2026)
+
+Cambios principales (todos después de V3; ver la guía de continuidad):
+
+- Teclado: WASD y flechas funcionan sin enfocar el mapa (las flechas nunca coincidían por pasar la tecla a minúsculas). R maneja el rover.
+- Pantalla de carga al abrir el juego y al aterrizar en la misión; se salta con cualquier tecla o clic.
+- Misiones en 7 capítulos con rastreador arriba y flecha guía en el mapa (roja en urgencias).
+- Tiempo por misión (3 / 3.5 / 2.5 min por sol) y dormir en el hábitat para pasar al siguiente sol sin costo.
+- Caminar gasta un poco de energía, agua y comida; el rover solo energía.
+- Si energía, agua o comida llega a 0: alerta con cuenta atrás de 60 s en vez de terminar al instante.
+- Cultivo: etapas visibles, se puede volver a sembrar después de cosechar.
+- Recolección: 10 puntos (cajas, hielo, celdas) que se rellenan; anillo de progreso y números flotantes.
+- Edificios nuevos: extractor de agua, garaje del rover, búnker; ícono de construcción con progreso. Ahora se puede caminar mientras se construye.
+- Rover de Marte (×2 velocidad), obstáculos (cráteres y rocas bloquean, dunas frenan) y zonas seguras (hábitat 6 ⚡, búnker 3 ⚡, cueva de lava gratis).
+- Diálogos de astronautas en globos sobre su cabeza, separados de NOVA.
+- Tarjeta grande para la tormenta de polvo, alerta solar con datos NASA, final con certificado imprimible o rescate con consejo.
+- Datos NASA: DONKI GST/CME/FLR en vivo (caché 6 h, respaldo archivado) cambian los segundos para refugiarse; InSight (archivado 2020) agrega comida en noches de menos de −97 °C.
+
+Fallos corregidos: el contador del segundo panel mostraba 0/2 aunque solo se podía construir uno; Naomi estaba parada sobre una roca; los botones de acción tapaban el pad de dirección; el astronauta tapaba el clic sobre la parcela; la pantalla de aterrizaje salía al volver de Ciencia; el panel de Ciencia se apretaba en tres columnas dentro de la misión.
+
+| Comprobación | Resultado |
+|---|---|
+| `npm run test` | Correcto: 61 pruebas en 6 archivos (15 nuevas en `missionUpgrade.test.ts`). |
+| `npm run lint` | Correcto, sin errores. |
+| `npm run build` | Correcto. |
+| Partida completa en Chrome sin interfaz (1440 × 900) | First flight de principio a fin: recolectar, construir, dormir, sembrar, tormenta de polvo, alerta solar, emergencia de comida, cosecha y victoria con certificado. Sin errores de consola. |
+| Revisión visual | Flecha guía, rover, globo de Sofía, alerta de emergencia y panel NASA revisados con capturas. |
+| API NASA | Endpoints probados desde el navegador el 16 de noviembre de 2026: CME y GST responden; FLR devolvió 404; InSight devuelve la semana archivada de 2020. Sin red, el juego usa el respaldo archivado (probado). |
+| Pendiente | Probar en la computadora del equipo con la API en vivo; decidir la versión móvil; con DEMO_KEY el límite es 30 consultas por hora por IP (conviene una clave propia en `.env.local`). |
